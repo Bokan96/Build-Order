@@ -1,0 +1,38 @@
+use e
+use m
+end
+end
+use e
+use m
+end
+end
+use e
+use m
+buy s
+end
+end
+attack s 1
+end
+assign base 2
+end
+end
+attack s 1
+end
+assign base 2
+end
+end
+attack s 1
+end
+assign base 2
+end
+end
+attack s 1
+end
+assign base 2
+end
+end
+attack s 1
+end
+assign base 2
+end
+quit
