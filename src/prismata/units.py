@@ -16,6 +16,8 @@ class Unit:
         self.current_health = health
         self.exhausted = True  # New units enter play exhausted
         self.damage_taken = 0  # Track damage for this turn
+        self.fragile = False   # If True, unit is destroyed after blocking
+        self.attack_cost = 0   # Energy cost to declare an attack
         
     def ready(self):
         """Ready this unit (un-exhaust it)."""
@@ -30,7 +32,9 @@ class Unit:
         self.damage_taken += amount
         
     def is_alive(self):
-        """Check if unit is still alive."""
+        """Check if unit is still alive. 0-HP units die if they take any damage."""
+        if self.max_health == 0:
+            return self.damage_taken == 0
         return self.damage_taken < self.current_health
     
     def reset_damage(self):
@@ -99,26 +103,29 @@ class Striker(Unit):
     
     def __init__(self):
         super().__init__("Striker", gold_cost=3, energy_cost=0, attack=2, block=0, health=1)
+        self.attack_cost = 1 # Requires 1 Energy to attack
 
 
 class Guard(Unit):
     """
     Cost: 3 Gold
-    Stats: 0 ATK / 2 BLK / 3 HP
+    Stats: 1 ATK / 2 BLK / 2 HP
     """
     
     def __init__(self):
-        super().__init__("Guard", gold_cost=3, energy_cost=0, attack=0, block=2, health=3)
+        super().__init__("Guard", gold_cost=3, energy_cost=0, attack=1, block=2, health=2)
 
 
 class Wall(Unit):
     """
-    Cost: 4 Gold
-    Stats: 0 ATK / 4 BLK / 6 HP
+    Cost: 3 Gold
+    Stats: 0 ATK / 2 BLK / 0 HP
+    Special: Enters play READY.
     """
     
     def __init__(self):
-        super().__init__("Wall", gold_cost=4, energy_cost=0, attack=0, block=4, health=6)
+        super().__init__("Wall", gold_cost=3, energy_cost=0, attack=0, block=2, health=0)
+        self.exhausted = False # Walls enter play Ready
 
 
 class Overcharger(Unit):
@@ -188,6 +195,7 @@ class Barrier(Unit):
     
     def __init__(self):
         super().__init__("Barrier", gold_cost=1, energy_cost=0, attack=0, block=1, health=1)
+        self.fragile = True
 
 
 # Unit factory for easy creation

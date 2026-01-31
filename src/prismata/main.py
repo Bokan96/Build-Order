@@ -4,9 +4,11 @@ A text-based implementation for testing game balance.
 """
 
 import os
-from game_state import GameState
-from game_engine import GameEngine
-from units import UNIT_TYPES
+from .game_state import GameState
+from .game_engine import GameEngine
+from .units import UNIT_TYPES
+from .agent import Agent
+import time
 
 # Unit descriptions for help system
 UNIT_HELP = {
@@ -17,7 +19,6 @@ Stats: 0 ATK / 0 BLK / 2 HP
 
 Ability: MINE (Exhaust, costs 1 Energy)
   - Spend 1 Energy to gain 1 Gold
-  - Your main economic engine
   - Use: 'use miner' (uses 1), 'use miner 3' (uses 3), 'use miner all' (uses all)
 """,
     "energizer": """
@@ -27,7 +28,6 @@ Stats: 0 ATK / 0 BLK / 3 HP
 
 Ability: GENERATE (Exhaust)
   - Gain 1 Energy
-  - Your energy engine for powering abilities
   - Use: 'use energizer' (uses 1), 'use energizer all' (uses all)
 """,
     "striker": """
@@ -35,24 +35,26 @@ STRIKER - Basic Attacker
 Cost: 3 Gold
 Stats: 2 ATK / 0 BLK / 1 HP
 
-Cheap, fragile attacker for early pressure.
-No special abilities - just attack!
+Cheap attacker for early pressure.
+Each attack prepared costs 1 Energy.
+Use: 'attack striker 1'
 """,
     "guard": """
 GUARD - Basic Defender
 Cost: 3 Gold
-Stats: 0 ATK / 2 BLK / 3 HP
+Stats: 1 ATK / 2 BLK / 2 HP
 
 Basic defensive unit.
 Can block 2 damage when ready.
 """,
     "wall": """
 WALL - Heavy Blocker
-Cost: 4 Gold
-Stats: 0 ATK / 4 BLK / 6 HP
+Cost: 3 Gold
+Stats: 0 ATK / 2 BLK / 0 HP
 
-Heavy defensive structure.
-Can block 4 damage and has high health.
+Structural defensive unit.
+Provides 2 block. Destroyed "for free" if block is broken.
+Enters play READY.
 """,
     "overcharger": """
 OVERCHARGER - Utility Unit
@@ -142,11 +144,11 @@ def show_unit_shop():
     units = [
         ("Barrier", "1G", "0/1/1", "Cheap blocker"),
         ("Miner", "2G", "0/0/2", "Mine: 1E -> 1G"),
-        ("Energizer", "2G", "0/0/3", "Generate: Gain 1E"),
-        ("Striker", "3G", "2/0/1", "Basic attacker"),
-        ("Guard", "3G", "0/2/3", "Basic blocker"),
+        ("Energizer", "2G", "0/0/2", "Generate: Gain 1E"),
+        ("Striker", "3G", "2/0/1", "Atk Cost: 1E"),
+        ("Guard", "3G", "1/2/2", "Basic blocker"),
         ("Overcharger", "3G+1E", "1/1/3", "Ready another unit"),
-        ("Wall", "4G", "0/4/6", "Heavy blocker"),
+        ("Wall", "3G", "0/2/0", "READY on enter"),
         ("Volatile", "4G+2E", "3/0/2", "Detonate: +3 ATK"),
     ]
     
@@ -289,12 +291,37 @@ def run_attacker_assignment_loop(game, engine):
 def main():
     """Main game loop."""
     print("\n" + "="*60)
-    print("PRISMATA LITE - Digital Playtest Version")
-    print("="*60)
-    print("\nType 'help' for commands, 'quit' to exit\n")
+    # Menu for Game Mode
+    print("CHOOSE GAME MODE:")
+    print("  1. Human vs Human")
+    print("  2. Human vs AI")
+    mode = input("\nSelect (1-2): ").strip()
     
+    ai_agent = None
+    if mode == "2":
+        print("\nCHOOSE AI STRATEGY:")
+        strats = ["Aggressive", "Guard", "Wall", "Reactive", "Random"]
+        for i, s in enumerate(strats):
+             print(f"  {i+1}. {s}")
+        choice = input(f"\nSelect (1-{len(strats)}): ").strip()
+        try:
+            strat_name = strats[int(choice)-1]
+        except:
+            strat_name = "Aggressive"
+        
+        # Open log file
+        log_file = open("battle_log.txt", "w")
+        log_file.write(f"--- PRISMATA BATTLE LOG ---\n")
+        log_file.write(f"Player 1: Human\n")
+        log_file.write(f"Player 2: AI ({strat_name})\n")
+        log_file.write(f"Match Start: {time.ctime()}\n\n")
+        
+        ai_agent = Agent(strat_name, logger=log_file, interactive=True)
+        print(f"\n[INFO] Playing against {strat_name} AI. Actions logged to 'battle_log.txt'.")
+        time.sleep(1)
+
     # Initialize game
-    game = GameState("Player 1", "Player 2")
+    game = GameState("Player 1", "AI Opponent" if ai_agent else "Player 2")
     game.setup_game()
     engine = GameEngine(game)
     
@@ -302,9 +329,48 @@ def main():
     print(engine.start_phase())
     print(engine.action_phase())
     game.display_full_state()
-    
     # Main game loop
     while not game.game_over:
+        # AI Turn Handling
+        if ai_agent and game.current_player == game.player2:
+            # Log phase transitions for AI
+            if game.phase == "Defense":
+                # AI assigns blockers
+                ai_agent.logger.write(f"\n--- DEFENSE PHASE (AI) ---\n")
+                ai_agent.execute_turn(game, engine)
+                
+                # If combat resolved or no damage to assign, AI will move to Action
+                # If combat NOT resolved (interactive), we break to let human assign
+                if game.phase == "Defense":
+                    # Human needs to assign damage
+                    pass 
+                else:
+                    # AI finished defense, we loop once more to handle AI Action
+                    continue
+            
+            elif game.phase == "Action":
+                print(f"\n[AI] {game.player2.name} is thinking...")
+                time.sleep(1)
+                ai_agent.logger.write(f"\n--- ACTION PHASE (AI) ---\n")
+                
+                # Run AI Action Logic
+                ai_agent.execute_turn(game, engine)
+                
+                # AI ends its turn
+                ai_agent.logger.write(f"AI finished action phase.\n")
+                engine.end_phase()
+                engine.end_turn()
+                
+                # Setup human turn
+                engine.start_phase()
+                engine.action_phase()
+                
+                clear_screen()
+                game.display_full_state()
+                print("-" * 60)
+                print(f"[AI] Turn complete. Check 'battle_log.txt' for details.")
+                continue
+
         # Custom prompt for Defense phase showing block progress
         if game.phase == "Defense":
             total_attack = sum(u.attack for u in engine.attacking_units)
@@ -312,6 +378,7 @@ def main():
             print(f"\n[Defending {total_block}/{total_attack}] {game.current_player.name}> ", end="")
         else:
             print(f"\n[{game.phase} Phase] {game.current_player.name}> ", end="")
+        
         command = input().strip().lower()
         
         if not command:
@@ -323,6 +390,7 @@ def main():
         
         # Handle commands
         if cmd == "quit":
+            if ai_agent: ai_agent.logger.write("Player quit the game.\n")
             print("\nThanks for playing!")
             break
             
@@ -342,6 +410,7 @@ def main():
                 continue
             unit_type = resolve_unit_name(args)
             success, message = engine.buy_unit(unit_type)
+            if success and ai_agent: ai_agent.logger.write(f"Player bought {unit_type}\n")
             clear_screen()
             game.display_full_state()
             print("-" * 60)
@@ -500,6 +569,9 @@ def main():
             for idx in indices_to_use:
                 # Correct function signature: use_ability(type, number, target)
                 success, message = engine.use_ability(unit_type, idx, target)
+                if success and ai_agent:
+                     target_str = f" on {target.name}" if target else ""
+                     ai_agent.logger.write(f"Player used {unit_type} #{idx}{target_str}\n")
                 
                 if success:
                     success_count += 1
@@ -538,6 +610,8 @@ def main():
                 print(f"[ERROR] {error}")
                 continue
             success, message = engine.prepare_attackers(unit_list)
+            if success and ai_agent:
+                ai_agent.logger.write(f"Player prepared attack: {args}\n")
             clear_screen()
             game.display_full_state()
             print("-" * 60)
@@ -563,7 +637,7 @@ def main():
                 msgs.append("Defense Phase Complete.")
                 msgs.append(engine.end_phase())
                 # DO NOT ready units here - blocking exhausts them!
-                game.current_player.purchased_unit = False
+                game.current_player.units_purchased = 0
                 msgs.append(engine.action_phase())
                 
                 clear_screen()
@@ -592,6 +666,8 @@ def main():
                 print(f"[ERROR] {error}")
                 continue
             success, message = engine.assign_blockers(unit_list)
+            if success and ai_agent:
+                ai_agent.logger.write(f"Player assigned blockers: {args}\n")
             
             if success:
                 # Check if fully blocked - auto-transition to Action
@@ -604,7 +680,7 @@ def main():
                     msgs.append("All damage blocked! Defense complete.")
                     msgs.append(engine.end_phase())
                     # DO NOT ready units here - blocking exhausts them!
-                    game.current_player.purchased_unit = False
+                    game.current_player.units_purchased = 0
                     msgs.append(engine.action_phase())
                     
                     clear_screen()
@@ -627,6 +703,8 @@ def main():
                 print(f"[ERROR] {error}")
                 continue
             success, message = engine.resolve_combat([assignment])
+            if success and ai_agent:
+                ai_agent.logger.write(f"Player assigned damage: {args}\n")
             clear_screen()
             
             if not game.game_over:
@@ -648,7 +726,7 @@ def main():
                      msgs.append(engine.end_phase())
                      # Now start normal Action phase for the current player (defender)
                      game.current_player.ready_all_units()
-                     game.current_player.purchased_unit = False
+                     game.current_player.units_purchased = 0
                      msgs.append(engine.action_phase())
                      
                      clear_screen()
@@ -661,6 +739,7 @@ def main():
             pass
             
         elif cmd == "end":
+            if ai_agent: ai_agent.logger.write(f"Player ended {game.phase} phase.\n")
             # Progress through phases
             if game.phase == "Action":
                 # End of Action Phase - attackers are already prepared (if any)
@@ -692,7 +771,7 @@ def main():
                         msgs.append("Defense Phase Complete.")
                         msgs.append(engine.end_phase())
                         game.current_player.ready_all_units()
-                        game.current_player.purchased_unit = False
+                        game.current_player.units_purchased = 0
                         msgs.append(engine.action_phase())
                         
                         clear_screen()
@@ -740,6 +819,9 @@ def main():
         print(f"\nFinal Score:")
         print(f"  {game.player1.name}: {game.player1.base_health} HP, {len(game.player1.units)} units")
         print(f"  {game.player2.name}: {game.player2.base_health} HP, {len(game.player2.units)} units")
+    
+    if ai_agent and ai_agent.logger:
+        ai_agent.logger.close()
 
 if __name__ == "__main__":
     main()

@@ -3,7 +3,7 @@ Game engine for Prismata Lite.
 Handles turn phases, combat resolution, and game flow.
 """
 
-from game_state import GameState
+from .game_state import GameState
 
 class GameEngine:
     """Manages turn phases and game logic."""
@@ -20,7 +20,7 @@ class GameEngine:
         # Start Phase always readies units and resets resources
         player = self.game.current_player
         player.ready_all_units()
-        player.purchased_unit = False
+        player.units_purchased = 0
         player.displayed_attack = 0
         player.displayed_block = 0
         player.reset_unit_damage()
@@ -66,7 +66,7 @@ class GameEngine:
         success, message, unit = self.game.current_player.buy_unit(unit_type)
         return success, message
         
-    def use_ability(self, unit_type, unit_number, ability_name, target=None):
+    def use_ability(self, unit_type, unit_number, target=None):
         """
         Use a unit's ability during Action Phase.
         unit_number is 1-indexed (e.g., "use miner 1" means the first miner)
@@ -122,6 +122,17 @@ class GameEngine:
             if len(ready_units) < count:
                 return False, f"Not enough ready {unit_type}s (wanted {count}, have {len(ready_units)})"
                 
+            # Check energy cost
+            energy_needed = 0
+            for i in range(count):
+                u = ready_units[i]
+                energy_needed += u.attack_cost
+            
+            if player.energy < energy_needed:
+                 return False, f"Not enough energy to attack with {unit_type}s (Need {energy_needed}, Have {player.energy})"
+
+            player.energy -= energy_needed
+            
             # Exhaust the first 'count' ready units
             for i in range(count):
                 u = ready_units[i]
@@ -130,7 +141,7 @@ class GameEngine:
             
         total_attack = sum(u.attack for u in self.attacking_units)
         player.displayed_attack = total_attack
-        return True, f"Prepared {len(self.attacking_units)} units to attack (total {total_attack} damage)"
+        return True, f"Prepared {len(self.attacking_units)} units to attack (total {total_attack} damage, cost {energy_needed if 'energy_needed' in locals() else 0} energy)"
         
     def attack_phase(self):
         """Enter the Attack Phase."""
@@ -216,17 +227,23 @@ class GameEngine:
                     return False, f"No {target_type}s to target"
                 
                 # Sort by HP ascending to destroy as many as possible
-                alive_units = [u for u in units if u.current_health > 0]
+                # Treat units with max_health=0 as currently 'alive' for targeting
+                alive_units = [u for u in units if u.is_alive()]
                 alive_units.sort(key=lambda u: u.current_health)
                 
                 damage_left = damage
                 destroyed = []
                 
                 for unit in alive_units:
-                    if damage_left >= unit.current_health:
-                        damage_left -= unit.current_health
-                        actual_damage_used += unit.current_health
-                        unit.take_damage(unit.current_health)
+                    hp_needed = unit.current_health
+                    # 0-HP units are destroyed 'for free' (don't consume damage pool)
+                    if damage_left >= hp_needed:
+                        # Only subtract if HP > 0
+                        if hp_needed > 0:
+                            damage_left -= hp_needed
+                            actual_damage_used += hp_needed
+                        
+                        unit.take_damage(max(1, hp_needed)) # Ensure it takes at least 1 damage to 'die'
                         destroyed.append(unit.name)
                     else:
                         break  # Not enough damage to destroy this unit
@@ -260,6 +277,11 @@ class GameEngine:
         
         # Reset energy
         self.game.current_player.energy = 0
+        
+        # FRAGILE: Destroy units that blocked and were fragile
+        for unit in self.blocking_units:
+            if unit.fragile:
+                unit.current_health = 0 # Mark for removal
         
         # Clear blocking units (always) and assigned damage
         self.blocking_units = []

@@ -40,17 +40,13 @@ There is no limit to how much you can hold, but totals are designed to usually s
 
 ---
 
-## 🏁 Setup
+### 🏁 Setup
 
-Each player starts with:
+* **2 Gold** and **1 Energy**
+* **1 Miner** and **1 Energizer** (Ready)
+* **Player 2 Advantage:** Starts with **+1 Gold** (Total 3 Gold)
 
-* **1 Miner**
-* **1 Energizer**
-
-Both start **ready**.
-
-Each player sets their Base to **10 Health**.
-
+Both players set their Base to **10 Health**.
 Choose a starting player randomly.
 
 ---
@@ -80,7 +76,7 @@ Players alternate turns. Each turn has up to **4 phases**:
    * *Blocking does not damage your units* — it's more like armor.
    * If you have no blockers, this phase is skipped automatically.
 3. **Attacker Assigns Damage:** Any **unblocked damage** (Total ATK - Total Block) is assigned by the **Original Attacker** to:
-   * **Your Units:** They can choose to destroy specific high-value targets (must assign damage ≥ unit's HP).
+   * **Your Units:** They can choose to destroy specific targets.
    * **Your Base:** Any remaining damage hits your Base.
 
 *Strategy:* If you block everything, the opponent cannot target your units! If you let damage through, they choose what dies.
@@ -91,10 +87,13 @@ Players alternate turns. Each turn has up to **4 phases**:
 
 You may perform these in any order:
 
-#### 🛒 Buy 1 Unit
+#### 🛒 Buy Units
 
-* Pay its cost
-* New units enter play **EXHAUSTED**
+* You may buy up to **2 units** per turn.
+* **Cost:** Pay the unit's cost.
+* **Penalty:** The second unit you buy in a turn costs **+1 additional Energy**.
+* **Cap:** You cannot have more than **5 units** of the same type.
+* New units enter play **EXHAUSTED**.
 
 #### ⚙️ Use Abilities
 
@@ -104,6 +103,7 @@ You may perform these in any order:
 #### ⚔️ Prepare Attackers
 
 * Exhaust any units you want to attack with.
+* **Cost:** Each **Striker** costs **1 Energy** to prepare for an attack.
 * *Attacks are resolved at the START of your OPPONENT'S next turn.*
 * *Special:* Using a **Volatile's** Detonate ability automatically prepares it for attack.
 
@@ -151,7 +151,7 @@ Your main economic engine.
 ### 🔵 Energizer
 
 **Cost:** 2 Gold  
-**Stats:** 0 ATK / 0 BLK / 3 HP
+**Stats:** 0 ATK / 0 BLK / 2 HP
 
 **Ability — Generate (Exhaust):**  
 Gain **+1 Energy**
@@ -163,16 +163,17 @@ Your energy engine.
 ### 🔴 Striker
 
 **Cost:** 3 Gold  
-**Stats:** 2 ATK / 0 BLK / 1 HP
+**Stats:** 2 ATK / 0 BLK / 1 HP  
+**Attack Cost:** 1 Energy
 
-Cheap, fragile attacker.
+Cheap, fragile attacker. Requires energy to swing.
 
 ---
 
 ### 🛡️ Guard
 
 **Cost:** 3 Gold  
-**Stats:** 0 ATK / 2 BLK / 3 HP
+**Stats:** 1 ATK / 2 BLK / 2 HP
 
 Basic defensive unit.
 
@@ -180,10 +181,11 @@ Basic defensive unit.
 
 ### 🧱 Wall
 
-**Cost:** 4 Gold  
-**Stats:** 0 ATK / 4 BLK / 6 HP
+**Cost:** 3 Gold  
+**Stats:** 0 ATK / 2 BLK / 0 HP
 
-Heavy defensive structure.
+**Special:** Walls enter play **READY** (not exhausted).
+Heavy defensive structure. Walls provide significant block but are destroyed **"for free"** (without consuming damage pool) if the block is broken and damage is assigned to them.
 
 ---
 
@@ -213,8 +215,10 @@ Massive burst finisher. Note that this unit will be removed at the end of the tu
 
 ### 🪵 Barrier
 
-**Cost:** 1 Gold  
+**Cost:** 0 Gold  
 **Stats:** 0 ATK / 1 BLK / 1 HP
+
+**Trait — Fragile:** If this unit is used to block, it is destroyed at the end of the turn.
 
 Cheap disposable blocker.
 

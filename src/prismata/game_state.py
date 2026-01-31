@@ -3,55 +3,67 @@ Game state management for Prismata Lite.
 Tracks players, resources, units, and base health.
 """
 
-from units import create_unit, Miner, Energizer
+from .units import create_unit, Miner, Energizer
 
 class Player:
     """Represents a player in the game."""
     
     def __init__(self, name):
         self.name = name
-        self.gold = 0
-        self.energy = 0
+        self.gold = 2
+        self.energy = 1
         self.base_health = 10
         self.units = []
-        self.purchased_unit = False  # Track if player bought a unit this turn
+        self.units_purchased = 0  # Track number of units bought this turn
         self.displayed_attack = 0
         self.displayed_block = 0
         
     def add_starting_units(self):
-        """Add starting units: 1 Miner and 1 Energizer (both ready)."""
+        """Add starting units: 1 Miner and 1 Energizer (all ready)."""
         miner = Miner()
-        energizer = Energizer()
-        # Starting units begin ready (not exhausted)
         miner.exhausted = False
-        energizer.exhausted = False
         self.units.append(miner)
+            
+        energizer = Energizer()
+        energizer.exhausted = False
         self.units.append(energizer)
         
-    def can_afford(self, unit):
-        """Check if player can afford a unit."""
-        return self.gold >= unit.gold_cost and self.energy >= unit.energy_cost
+    def can_afford(self, unit, penalty_energy=0):
+        """Check if player can afford a unit with potential energy penalty."""
+        return self.gold >= unit.gold_cost and self.energy >= (unit.energy_cost + penalty_energy)
         
     def buy_unit(self, unit_type):
         """
         Attempt to buy a unit.
+        The second unit purchase costs 1 additional energy.
         Returns (success, message, unit)
         """
-        if self.purchased_unit:
-            return False, "You can only buy one unit per turn", None
+        if self.units_purchased >= 2:
+            return False, "You can only buy two units per turn", None
             
+        # Enforce unit cap of 5
+        existing_count = len(self.get_units_by_type(unit_type))
+        if existing_count >= 5:
+            return False, f"Unit cap reached: You cannot have more than 5 {unit_type}s", None
+
         unit = create_unit(unit_type)
         if not unit:
             return False, f"Unknown unit type: {unit_type}", None
             
-        if not self.can_afford(unit):
-            return False, f"Cannot afford {unit.name} (costs {unit.gold_cost}G {unit.energy_cost}E, you have {self.gold}G {self.energy}E)", None
+        penalty = 1 if self.units_purchased == 1 else 0
+        
+        if not self.can_afford(unit, penalty):
+            msg = f"Cannot afford {unit.name}"
+            if penalty > 0:
+                msg += f" (includes 1 energy penalty for 2nd unit)"
+            msg += f" (costs {unit.gold_cost}G {unit.energy_cost + penalty}E, you have {self.gold}G {self.energy}E)"
+            return False, msg, None
             
         self.gold -= unit.gold_cost
-        self.energy -= unit.energy_cost
+        self.energy -= (unit.energy_cost + penalty)
         self.units.append(unit)
-        self.purchased_unit = True
-        return True, f"Bought {unit.name} for {unit.gold_cost}G {unit.energy_cost}E", unit
+        self.units_purchased += 1
+        return True, f"Bought {unit.name} for {unit.gold_cost}G {unit.energy_cost + penalty}E", unit
         
     def get_units_by_type(self, unit_type):
         """Get all units of a specific type."""
@@ -148,6 +160,8 @@ class GameState:
         """Initialize the game with starting units."""
         self.player1.add_starting_units()
         self.player2.add_starting_units()
+        # Player 2 Advantage: +1 Gold
+        self.player2.gold += 1
         
     def switch_player(self):
         """Switch to the other player."""
