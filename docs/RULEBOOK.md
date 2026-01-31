@@ -92,7 +92,7 @@ You may perform these in any order:
 * You may buy up to **2 units** per turn.
 * **Cost:** Pay the unit's cost.
 * **Penalty:** The second unit you buy in a turn costs **+1 additional Energy**.
-* **Cap:** You cannot have more than **5 units** of the same type.
+* **Cap/Supply:** This is a **Lifetime Limit**. You cannot buy more than **5 units** of the same type (Limit **3** for **Walls**) per game. Once your supply of 3 Walls is destroyed, you cannot buy more.
 * New units enter play **EXHAUSTED**.
 
 #### ⚙️ Use Abilities
@@ -139,7 +139,7 @@ Exhausted units cannot block.
 ### 🟡 Miner
 
 **Cost:** 2 Gold  
-**Stats:** 0 ATK / 0 BLK / 2 HP
+**Stats:** 0 ATK / 0 BLK / 1 HP
 
 **Ability — Mine (Exhaust):**  
 Spend **1 Energy → Gain 1 Gold**
@@ -151,7 +151,7 @@ Your main economic engine.
 ### 🔵 Energizer
 
 **Cost:** 2 Gold  
-**Stats:** 0 ATK / 0 BLK / 2 HP
+**Stats:** 0 ATK / 0 BLK / 3 HP
 
 **Ability — Generate (Exhaust):**  
 Gain **+1 Energy**
@@ -182,7 +182,7 @@ Basic defensive unit.
 ### 🧱 Wall
 
 **Cost:** 3 Gold  
-**Stats:** 0 ATK / 2 BLK / 0 HP
+**Stats:** 0 ATK / 2 BLK / 0 HP (Limit 3 per player)
 
 **Special:** Walls enter play **READY** (not exhausted).
 Heavy defensive structure. Walls provide significant block but are destroyed **"for free"** (without consuming damage pool) if the block is broken and damage is assigned to them.
@@ -204,10 +204,10 @@ Allows double use of key units.
 ### 💥 Volatile
 
 **Cost:** 4 Gold + 2 Energy  
-**Stats:** 3 ATK / 0 BLK / 2 HP
+**Stats:** 0 ATK / 0 BLK / 2 HP
 
-**Ability — Detonate (Exhaust, 2 Energy):**  
-Destroy this unit → it gains **+3 Attack** this turn and is automatically added to your attackers.
+**Ability — Detonate (Exhaust, 1 Energy):**  
+Destroy this unit → it gains **+5 Attack** this turn and is automatically added to your attackers.
 
 Massive burst finisher. Note that this unit will be removed at the end of the turn it detonates.
 
@@ -215,7 +215,7 @@ Massive burst finisher. Note that this unit will be removed at the end of the tu
 
 ### 🪵 Barrier
 
-**Cost:** 0 Gold  
+**Cost:** 1 Gold  
 **Stats:** 0 ATK / 1 BLK / 1 HP
 
 **Trait — Fragile:** If this unit is used to block, it is destroyed at the end of the turn.

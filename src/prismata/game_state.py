@@ -15,6 +15,7 @@ class Player:
         self.base_health = 10
         self.units = []
         self.units_purchased = 0  # Track number of units bought this turn
+        self.lifetime_units = {}  # Track total units acquired (lifetime limit)
         self.displayed_attack = 0
         self.displayed_block = 0
         
@@ -23,10 +24,12 @@ class Player:
         miner = Miner()
         miner.exhausted = False
         self.units.append(miner)
+        self.lifetime_units["miner"] = 1
             
         energizer = Energizer()
         energizer.exhausted = False
         self.units.append(energizer)
+        self.lifetime_units["energizer"] = 1
         
     def can_afford(self, unit, penalty_energy=0):
         """Check if player can afford a unit with potential energy penalty."""
@@ -41,10 +44,11 @@ class Player:
         if self.units_purchased >= 2:
             return False, "You can only buy two units per turn", None
             
-        # Enforce unit cap of 5
-        existing_count = len(self.get_units_by_type(unit_type))
-        if existing_count >= 5:
-            return False, f"Unit cap reached: You cannot have more than 5 {unit_type}s", None
+        # Enforce lifetime unit cap (General: 5, Wall: 3)
+        lifetime_count = self.lifetime_units.get(unit_type.lower(), 0)
+        cap = 3 if unit_type.lower() == "wall" else 5
+        if lifetime_count >= cap:
+            return False, f"Supply exhausted: You can only have {cap} {unit_type}s per game", None
 
         unit = create_unit(unit_type)
         if not unit:
@@ -63,6 +67,7 @@ class Player:
         self.energy -= (unit.energy_cost + penalty)
         self.units.append(unit)
         self.units_purchased += 1
+        self.lifetime_units[unit_type.lower()] = self.lifetime_units.get(unit_type.lower(), 0) + 1
         return True, f"Bought {unit.name} for {unit.gold_cost}G {unit.energy_cost + penalty}E", unit
         
     def get_units_by_type(self, unit_type):
@@ -160,8 +165,11 @@ class GameState:
         """Initialize the game with starting units."""
         self.player1.add_starting_units()
         self.player2.add_starting_units()
-        # Player 2 Advantage: +1 Gold
+        # Player 2 Advantage: +1 Gold and +1 Barrier
         self.player2.gold += 1
+        barrier = create_unit("barrier")
+        barrier.exhausted = False
+        self.player2.units.append(barrier)
         
     def switch_player(self):
         """Switch to the other player."""

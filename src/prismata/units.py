@@ -54,7 +54,7 @@ class Miner(Unit):
     """
     
     def __init__(self):
-        super().__init__("Miner", gold_cost=2, energy_cost=0, attack=0, block=0, health=2)
+        super().__init__("Miner", gold_cost=2, energy_cost=0, attack=0, block=0, health=1)
         
     def mine(self, player):
         """
@@ -166,21 +166,21 @@ class Volatile(Unit):
     """
     
     def __init__(self):
-        super().__init__("Volatile", gold_cost=4, energy_cost=2, attack=3, block=0, health=2)
+        super().__init__("Volatile", gold_cost=4, energy_cost=2, attack=0, block=0, health=2)
         self.detonated = False
         
     def detonate(self, player):
         """
-        Use Detonate ability: Spend 2 Energy, destroy this unit, gain +3 Attack.
+        Use Detonate ability: Spend 1 Energy, destroy this unit, gain +5 Attack.
         Returns True if successful, False otherwise.
         """
         if self.exhausted:
             return False, "This Volatile is already exhausted"
-        if player.energy < 2:
-            return False, "Not enough energy (need 2)"
+        if player.energy < 1:
+            return False, "Not enough energy (need 1)"
             
-        player.energy -= 2
-        self.attack += 3  # Now has 6 total attack
+        player.energy -= 1
+        self.attack += 5  # Gain 5 attack
         self.detonated = True
         self.current_health = 0  # Will be destroyed at end of turn
         self.exhaust()

@@ -15,7 +15,7 @@ UNIT_HELP = {
     "miner": """
 MINER - Economic Unit
 Cost: 2 Gold
-Stats: 0 ATK / 0 BLK / 2 HP
+Stats: 0 ATK / 0 BLK / 1 HP
 
 Ability: MINE (Exhaust, costs 1 Energy)
   - Spend 1 Energy to gain 1 Gold
@@ -53,7 +53,7 @@ Cost: 3 Gold
 Stats: 0 ATK / 2 BLK / 0 HP
 
 Structural defensive unit.
-Provides 2 block. Destroyed "for free" if block is broken.
+Provides 2 block. (Limit 3 per player)
 Enters play READY.
 """,
     "overcharger": """
@@ -69,10 +69,10 @@ Ability: OVERCHARGE (Exhaust, costs 1 Energy)
     "volatile": """
 VOLATILE - Burst Damage
 Cost: 4 Gold + 2 Energy
-Stats: 3 ATK / 0 BLK / 2 HP
+Stats: 0 ATK / 0 BLK / 2 HP
 
-Ability: DETONATE (Exhaust, costs 2 Energy)
-  - Destroy this unit to gain +3 Attack (total 6 ATK!)
+Ability: DETONATE (Exhaust, costs 1 Energy)
+  - Destroy this unit to gain +5 Attack (total 5 ATK!)
   - Massive burst finisher
   - Use: 'use volatile 1' to detonate
 """,
@@ -126,7 +126,9 @@ def print_help(unit_name=None):
     
     print("\nDEFENSE PHASE:")
     print("  block <unit> [#]        - Assign blocker (e.g., 'block guard' or 'block wall 2')")
-    print("  block end               - Finish blocking (attacker assigns leftover damage)")
+    print("  <unit>                  - Kill a unit (if Attacker) or block with one (if Defender)")
+    print("  base                    - Damage enemy base (Attacker command)")
+    print("  end                     - Finish blocking (Defense) or current phase (Action)")
     
     print("\nUNITS (type 'help <unit>' for details):")
     print("  miner, energizer, striker, guard, wall, overcharger, volatile, barrier")
@@ -212,30 +214,46 @@ def parse_unit_list(text):
         
     return units, None
 
-def parse_damage_assignment(text):
+def parse_damage_assignment(text, game, engine):
     """
-    Parse damage assignment.
-    Example: "base 5" -> ("base", 5)
-    Example: "m 2" -> ("miner", 2) - assigns 2 damage to miners
+    Parse damage assignment with streamlined syntax.
+    Example: "base" -> ("base", all_remaining)
+    Example: "m" -> ("miner", lethal_to_one)
     """
     tokens = text.strip().split()
+    total_attack = sum(u.attack for u in engine.attacking_units)
+    total_block = sum(u.block for u in engine.blocking_units)
+    remaining = total_attack - total_block - engine.assigned_damage
     
-    if len(tokens) != 2:
-        return None, "Invalid format (expected 'base <damage>' or '<unit> <damage>')"
-    
+    if len(tokens) == 0:
+        return None, "Empty command"
+        
     target = tokens[0].lower()
-    try:
-        damage = int(tokens[1])
-        if damage < 0:
-            return None, f"Cannot assign negative damage: '{damage}'"
-    except ValueError:
-        return None, f"Invalid damage value: '{tokens[1]}'"
     
     if target == "base":
-        return ("base", damage), None
+        return ("base", remaining), None
     else:
         unit_type = resolve_unit_name(target)
-        return (unit_type, damage), None
+        # Find lethal damage for 1 unit of this type
+        defender = game.current_player
+        units = defender.get_units_by_type(unit_type)
+        alive_units = [u for u in units if u.is_alive()]
+        
+        if not alive_units:
+            return None, f"No alive {unit_type}s to target"
+            
+        # Sort by HP to get the most efficient kill
+        alive_units.sort(key=lambda u: u.current_health)
+        lethal_damage = alive_units[0].current_health
+        
+        # If user specified exact damage, use it (old syntax fallback)
+        if len(tokens) == 2:
+            try:
+                lethal_damage = int(tokens[1])
+            except ValueError:
+                return None, f"Invalid damage value: '{tokens[1]}'"
+        
+        return (unit_type, lethal_damage), None
 
 def run_attacker_assignment_loop(game, engine):
     """
@@ -244,7 +262,7 @@ def run_attacker_assignment_loop(game, engine):
     """
     total_attack = sum(u.attack for u in engine.attacking_units)
     total_block = sum(u.block for u in engine.blocking_units)
-    remaining = max(0, total_attack - total_block) - engine.assigned_damage
+    remaining = total_attack - total_block - engine.assigned_damage
     
     if remaining <= 0:
         return True # Nothing to assign
@@ -253,7 +271,7 @@ def run_attacker_assignment_loop(game, engine):
     print(f"\n{'='*60}")
     print(f">>> {attacker.name} (ATTACKER): Assign {remaining} remaining damage <<<")
     print(f"{'='*60}")
-    print(f"Use 'assign base <dmg>' or 'assign <unit> <dmg>'")
+    print(f"Use '<unit>' to kill one (e.g. 'm') or 'base' to finish.")
     print(f"Target: {game.current_player.name}'s units/base")
     
     while remaining > 0 and not game.game_over:
@@ -267,15 +285,14 @@ def run_attacker_assignment_loop(game, engine):
             continue
         
         tokens = assign_cmd.split(maxsplit=1)
-        if tokens[0] != "assign":
-            print("[ERROR] Only 'assign' command allowed. (or 'state')")
-            continue
+        # Support both "assign m" and just "m"
+        cmd_part = tokens[0]
+        if cmd_part == "assign" and len(tokens) > 1:
+            target_input = tokens[1]
+        else:
+            target_input = assign_cmd
             
-        if len(tokens) < 2:
-            print("[ERROR] Specify target (e.g., 'assign base 2')")
-            continue
-            
-        assignment, error = parse_damage_assignment(tokens[1])
+        assignment, error = parse_damage_assignment(target_input, game, engine)
         if error:
             print(f"[ERROR] {error}")
             continue
@@ -284,9 +301,39 @@ def run_attacker_assignment_loop(game, engine):
         print("[OK] " + message if success else "[ERROR] " + message)
         
         if success:
-            remaining = max(0, total_attack - total_block) - engine.assigned_damage
+            remaining = total_attack - total_block - engine.assigned_damage
             
     return True
+def handle_combat_resolution(game, engine, ai_agent=None):
+    """
+    Finalize combat by having the attacker assign any remaining damage.
+    If the attacker is AI, it happens automatically.
+    """
+    total_attack = sum(u.attack for u in engine.attacking_units)
+    total_block = sum(u.block for u in engine.blocking_units)
+    remaining = total_attack - total_block - engine.assigned_damage
+    
+    if remaining <= 0:
+        return True
+        
+    attacker = game.other_player
+    # Identify AI name dynamically (usually "AI Opponent")
+    is_ai_attacker = ai_agent and ("AI" in attacker.name or "Random" in attacker.name or "Aggressive" in attacker.name)
+    
+    if is_ai_attacker:
+        # AI assigns damage
+        print(f"\n[AI] {attacker.name} is assigning {remaining} damage...")
+        assignments = ai_agent.assign_damage(game, engine, remaining)
+        success, message = engine.resolve_combat(assignments)
+        if success:
+             ai_agent.logger.write(f"AI assigned damage: {assignments}\n")
+             print("[OK] " + message)
+        else:
+             print("[ERROR] AI assignment failed: " + message)
+        return success
+    else:
+        # Human assigns damage
+        return run_attacker_assignment_loop(game, engine)
 
 def main():
     """Main game loop."""
@@ -321,7 +368,14 @@ def main():
         time.sleep(1)
 
     # Initialize game
-    game = GameState("Player 1", "AI Opponent" if ai_agent else "Player 2")
+    p1_name = "Player 1"
+    p2_name = "AI Opponent" if ai_agent else "Player 2"
+    
+    if ai_agent and random.random() < 0.5:
+        p1_name, p2_name = p2_name, p1_name
+        print(f"\n[INFO] Coin toss! {p1_name} goes first.")
+    
+    game = GameState(p1_name, p2_name)
     game.setup_game()
     engine = GameEngine(game)
     
@@ -331,8 +385,11 @@ def main():
     game.display_full_state()
     # Main game loop
     while not game.game_over:
+        # Identify if current player is AI
+        is_ai_turn = ai_agent and ("AI" in game.current_player.name or "Opponent" in game.current_player.name)
+        
         # AI Turn Handling
-        if ai_agent and game.current_player == game.player2:
+        if is_ai_turn:
             # Log phase transitions for AI
             if game.phase == "Defense":
                 # AI assigns blockers
@@ -349,7 +406,7 @@ def main():
                     continue
             
             elif game.phase == "Action":
-                print(f"\n[AI] {game.player2.name} is thinking...")
+                print(f"\n[AI] {game.current_player.name} is thinking...")
                 time.sleep(1)
                 ai_agent.logger.write(f"\n--- ACTION PHASE (AI) ---\n")
                 
@@ -375,7 +432,36 @@ def main():
         if game.phase == "Defense":
             total_attack = sum(u.attack for u in engine.attacking_units)
             total_block = sum(u.block for u in engine.blocking_units)
-            print(f"\n[Defending {total_block}/{total_attack}] {game.current_player.name}> ", end="")
+            unblocked = max(0, total_attack - total_block)
+            
+            # Check if we should auto-trigger damage assignment
+            ready_blockers = [u for u in game.current_player.units if not u.exhausted and u.block > 0]
+            if not ready_blockers and unblocked > 0:
+                 # No more blockers, attacker must assign
+                 attacker = game.other_player
+                 if not ai_agent or attacker == game.player1:
+                      print(f"\n[INFO] No blockers available. {attacker.name} must assign {unblocked} damage.")
+                      handle_combat_resolution(game, engine, ai_agent)
+                      
+                      # finalized defense
+                      msgs = ["Defense Phase Complete."]
+                      msgs.append(engine.end_phase())
+                      game.current_player.units_purchased = 0
+                      msgs.append(engine.action_phase())
+                      
+                      clear_screen()
+                      game.display_full_state()
+                      print("-" * 60)
+                      print("\n".join(msgs))
+                      continue
+
+            # Identify if defending player is AI
+            is_ai_defending = ai_agent and ("AI" in game.current_player.name or "Opponent" in game.current_player.name)
+
+            if is_ai_defending:
+                 print(f"\n[AI Defending - {unblocked} damage unblocked] {game.other_player.name} (ATTACKER)> ", end="")
+            else:
+                 print(f"\n[Defending {total_block}/{total_attack}] {game.current_player.name}> ", end="")
         else:
             print(f"\n[{game.phase} Phase] {game.current_player.name}> ", end="")
         
@@ -630,7 +716,7 @@ def main():
                 remaining = total_attack - total_block - engine.assigned_damage
                 
                 if remaining > 0:
-                    run_attacker_assignment_loop(game, engine)
+                    handle_combat_resolution(game, engine, ai_agent)
                 
                 # Transition to Action phase
                 msgs = []
@@ -670,16 +756,36 @@ def main():
                 ai_agent.logger.write(f"Player assigned blockers: {args}\n")
             
             if success:
-                # Check if fully blocked - auto-transition to Action
+                # Check if fully blocked or no more blockers
                 total_attack = sum(u.attack for u in engine.attacking_units)
                 total_block = sum(u.block for u in engine.blocking_units)
+                ready_blockers = [u for u in game.current_player.units if not u.exhausted and u.block > 0]
                 
                 if total_block >= total_attack:
                     msgs = []
                     msgs.append(f"[OK] {message}")
                     msgs.append("All damage blocked! Defense complete.")
                     msgs.append(engine.end_phase())
-                    # DO NOT ready units here - blocking exhausts them!
+                    game.current_player.units_purchased = 0
+                    msgs.append(engine.action_phase())
+                    
+                    clear_screen()
+                    game.display_full_state()
+                    print("-" * 60)
+                    print("\n".join(msgs))
+                    continue
+                elif not ready_blockers:
+                    msgs = []
+                    msgs.append(f"[OK] {message}")
+                    msgs.append("[INFO] No more blockers available. Attacker must assign remaining damage.")
+                    print("\n".join(msgs))
+                    
+                    # Run assignment loop
+                    handle_combat_resolution(game, engine, ai_agent)
+                    
+                    # After assignment, finalize defense
+                    msgs = ["Defense Phase Complete."]
+                    msgs.append(engine.end_phase())
                     game.current_player.units_purchased = 0
                     msgs.append(engine.action_phase())
                     
@@ -696,9 +802,9 @@ def main():
             
         elif cmd == "assign":
             if not args:
-                print("[ERROR] Specify damage assignment (e.g., 'assign base 5' or 'assign guard 1 3')")
+                print("[ERROR] Specify target (e.g., 'base' or 'guard')")
                 continue
-            assignment, error = parse_damage_assignment(args)
+            assignment, error = parse_damage_assignment(args, game, engine)
             if error:
                 print(f"[ERROR] {error}")
                 continue
@@ -741,7 +847,29 @@ def main():
         elif cmd == "end":
             if ai_agent: ai_agent.logger.write(f"Player ended {game.phase} phase.\n")
             # Progress through phases
-            if game.phase == "Action":
+            if game.phase == "Defense":
+                # Shorthand for 'block end'
+                total_attack = sum(u.attack for u in engine.attacking_units)
+                total_block = sum(u.block for u in engine.blocking_units)
+                remaining = total_attack - total_block - engine.assigned_damage
+                
+                if remaining > 0:
+                    handle_combat_resolution(game, engine, ai_agent)
+                
+                # Transition to Action phase
+                msgs = []
+                msgs.append("Defense Phase Complete.")
+                msgs.append(engine.end_phase())
+                game.current_player.units_purchased = 0
+                msgs.append(engine.action_phase())
+                
+                clear_screen()
+                game.display_full_state()
+                print("-" * 60)
+                print("\n".join(msgs))
+                continue
+
+            elif game.phase == "Action":
                 # End of Action Phase - attackers are already prepared (if any)
                 msgs = []
                 
@@ -764,13 +892,12 @@ def main():
                         print("-" * 60)
                         print("\n".join(msgs))
                         
-                        run_attacker_assignment_loop(game, engine)
+                        handle_combat_resolution(game, engine, ai_agent)
                         
                         # Proceed to Action Phase (simulating end of defense)
                         msgs = []
                         msgs.append("Defense Phase Complete.")
                         msgs.append(engine.end_phase())
-                        game.current_player.ready_all_units()
                         game.current_player.units_purchased = 0
                         msgs.append(engine.action_phase())
                         
@@ -809,6 +936,82 @@ def main():
                 print("\n".join(msgs))
                 
         else:
+            # Check for shorthand unit commands in Defense phase
+            if game.phase == "Defense":
+                resolved = resolve_unit_name(cmd)
+                attacker = game.other_player
+                # If it's a valid unit type and we are defending
+                if resolved in UNIT_TYPES:
+                    is_ai_defending = ai_agent and ("AI" in game.current_player.name or "Opponent" in game.current_player.name)
+                    
+                    if is_ai_defending:
+                        # Human is attacking, unit name means assign damage
+                        assignment, error = parse_damage_assignment(command, game, engine)
+                        if error:
+                            print(f"[ERROR] {error}")
+                            continue
+                        success, message = engine.resolve_combat([assignment])
+                        if success and ai_agent:
+                            ai_agent.logger.write(f"Player assigned damage: {command}\n")
+                        clear_screen()
+                        if not game.game_over:
+                            game.display_full_state()
+                        print("[OK] " + message if success else "[ERROR] " + message)
+                        
+                        # Auto-transition check
+                        total_attack = sum(u.attack for u in engine.attacking_units)
+                        total_block = sum(u.block for u in engine.blocking_units)
+                        max_damage = max(0, total_attack - total_block)
+                        remaining = max_damage - engine.assigned_damage
+                        if success and remaining <= 0:
+                             msgs = ["[INFO] All damage assigned. Defense complete."]
+                             msgs.append(engine.end_phase())
+                             game.current_player.ready_all_units()
+                             game.current_player.units_purchased = 0
+                             msgs.append(engine.action_phase())
+                             clear_screen()
+                             game.display_full_state()
+                             print("\n".join(msgs))
+                        continue
+                    else:
+                        # Human is defending, unit name means block with 1
+                        success, message = engine.assign_blockers([(resolved, 1)])
+                        if success and ai_agent:
+                            ai_agent.logger.write(f"Player assigned blocker: {resolved}\n")
+                        
+                        if success:
+                            # Auto-transition check
+                            total_attack = sum(u.attack for u in engine.attacking_units)
+                            total_block = sum(u.block for u in engine.blocking_units)
+                            ready_blockers = [u for u in game.current_player.units if not u.exhausted and u.block > 0]
+                            
+                            if total_block >= total_attack:
+                                msgs = [f"[OK] {message}", "All damage blocked! Defense complete."]
+                                msgs.append(engine.end_phase())
+                                game.current_player.units_purchased = 0
+                                msgs.append(engine.action_phase())
+                                clear_screen()
+                                game.display_full_state()
+                                print("\n".join(msgs))
+                                continue
+                            elif not ready_blockers:
+                                print(f"[OK] {message}")
+                                print("[INFO] No more blockers available. Attacker must assign remaining damage.")
+                                handle_combat_resolution(game, engine, ai_agent)
+                                msgs = ["Defense Phase Complete."]
+                                msgs.append(engine.end_phase())
+                                game.current_player.units_purchased = 0
+                                msgs.append(engine.action_phase())
+                                clear_screen()
+                                game.display_full_state()
+                                print("\n".join(msgs))
+                                continue
+                        
+                        clear_screen()
+                        game.display_full_state()
+                        print("[OK] " + message if success else "[ERROR] " + message)
+                        continue
+
             print(f"[ERROR] Unknown command: '{cmd}'. Type 'help' for available commands.")
     
     # Game over
