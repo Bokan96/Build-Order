@@ -49,12 +49,12 @@ class Unit:
 class Miner(Unit):
     """
     Cost: 2 Gold
-    Stats: 0 ATK / 0 BLK / 2 HP
+    Stats: 0 ATK / 1 BLK / 1 HP
     Ability: Mine (Exhaust, 1 Energy) -> Gain 1 Gold
     """
     
     def __init__(self):
-        super().__init__("Miner", gold_cost=2, energy_cost=0, attack=0, block=0, health=1)
+        super().__init__("Miner", gold_cost=2, energy_cost=0, attack=0, block=1, health=1)
         
     def mine(self, player):
         """
@@ -126,6 +126,20 @@ class Wall(Unit):
     def __init__(self):
         super().__init__("Wall", gold_cost=3, energy_cost=0, attack=0, block=2, health=0)
         self.exhausted = False # Walls enter play Ready
+        
+    def repair(self, player):
+        """
+        Use Repair ability: Spend 1 Energy to ready this unit.
+        Returns True if successful, False otherwise.
+        """
+        if not self.exhausted:
+            return False, "This Wall is already ready"
+        if player.energy < 1:
+            return False, "Not enough energy (need 1 to repair)"
+            
+        player.energy -= 1
+        self.ready()
+        return True, "Wall repaired (ready for blocking)"
 
 
 class Overcharger(Unit):

@@ -75,9 +75,10 @@ class Player:
         return [u for u in self.units if u.name.lower() == unit_type.lower()]
         
     def ready_all_units(self):
-        """Ready all units at start of turn."""
+        """Ready all units at start of turn (Except Walls, which require repair)."""
         for unit in self.units:
-            unit.ready()
+            if unit.name != "Wall":
+                unit.ready()
             
     def remove_dead_units(self):
         """Remove units that have taken lethal damage."""
@@ -165,11 +166,11 @@ class GameState:
         """Initialize the game with starting units."""
         self.player1.add_starting_units()
         self.player2.add_starting_units()
-        # Player 2 Advantage: +1 Gold and +1 Barrier
-        self.player2.gold += 1
+        # Player 2 Advantage: +1 Barrier
         barrier = create_unit("barrier")
         barrier.exhausted = False
         self.player2.units.append(barrier)
+        self.player2.lifetime_units["barrier"] = self.player2.lifetime_units.get("barrier", 0) + 1
         
     def switch_player(self):
         """Switch to the other player."""

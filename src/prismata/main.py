@@ -15,7 +15,7 @@ UNIT_HELP = {
     "miner": """
 MINER - Economic Unit
 Cost: 2 Gold
-Stats: 0 ATK / 0 BLK / 1 HP
+Stats: 0 ATK / 1 BLK / 1 HP
 
 Ability: MINE (Exhaust, costs 1 Energy)
   - Spend 1 Energy to gain 1 Gold
@@ -50,11 +50,12 @@ Can block 2 damage when ready.
     "wall": """
 WALL - Heavy Blocker
 Cost: 3 Gold
-Stats: 0 ATK / 2 BLK / 0 HP
+Stats: 0 ATK / 2 BLK / 0 HP (Limit 3 per player)
 
 Structural defensive unit.
-Provides 2 block. (Limit 3 per player)
-Enters play READY.
+Provides 2 block. (Must REPAIR for 1 Energy if used to block)
+Does not ready automatically at start of turn.
+Use: 'use wall' to repair.
 """,
     "overcharger": """
 OVERCHARGER - Utility Unit

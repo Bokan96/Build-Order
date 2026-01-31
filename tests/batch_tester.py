@@ -47,10 +47,13 @@ def simulate_game(strategy1_name, strategy2_name, game_id):
 def run_batch(iterations=20):
     strategies = ["Aggressive", "Guard", "Wall", "Reactive", "Random"]
     results = {}
+    
+    global_p1_wins = 0
+    global_p2_wins = 0
+    global_draws = 0
 
     for s1 in strategies:
         for s2 in strategies:
-            # Re-initialize to ensure 50 iterations of Random vs Random specifically
             p1_wins = 0
             p2_wins = 0
             draws = 0
@@ -59,13 +62,16 @@ def run_batch(iterations=20):
             print(f"Running batch simulation: {iterations} games of {s1} vs {s2}...")
             
             for i in range(iterations):
-                winner, turns, p1_hp, p2_hp = simulate_game(s1, s2, i) # Changed to simulate_game
-                if winner == "P1": # Changed to "P1"
+                winner, turns, p1_hp, p2_hp = simulate_game(s1, s2, i)
+                if winner == "P1":
                     p1_wins += 1
-                elif winner == "P2": # Changed to "P2"
+                    global_p1_wins += 1
+                elif winner == "P2":
                     p2_wins += 1
+                    global_p2_wins += 1
                 else:
                     draws += 1
+                    global_draws += 1
                 total_turns += turns
             
             avg_turns = total_turns / iterations
@@ -76,6 +82,15 @@ def run_batch(iterations=20):
     print("-" * 65)
     for (s1, s2), (w1, w2, d, avg) in results.items():
         print(f"{s1:<12} {s2:<12} {w1:<8} {w2:<8} {d:<8} {avg:.1f}")
+        
+    total_games = global_p1_wins + global_p2_wins + global_draws
+    print("\n" + "="*65)
+    print("GLOBAL WINRATE ANALYSIS")
+    print("-" * 65)
+    print(f"Total Games Played: {total_games}")
+    print(f"Total P1 Wins:      {global_p1_wins} ({global_p1_wins/total_games*100:.1f}%)")
+    print(f"Total P2 Wins:      {global_p2_wins} ({global_p2_wins/total_games*100:.1f}%)")
+    print(f"Total Draws:        {global_draws} ({global_draws/total_games*100:.1f}%)")
 
 if __name__ == "__main__":
-    run_batch(iterations=50)
+    run_batch(iterations=20)

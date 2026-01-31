@@ -123,11 +123,26 @@ class Agent:
                 energy_for_attack -= u.attack_cost
                 total_attack_energy_cost += u.attack_cost
         
-        reserved_energy = 0
-        if potential_total_damage > enemy_block and potential_total_damage > 0:
-             reserved_energy = total_attack_energy_cost
+        # New Rule: Reserved energy ALWAYS includes Striker costs 
+        # (because they always attack to force wall exhaustion)
+        strikers_ready = [u for u in active_player.get_units_by_type("striker") if not u.exhausted]
+        striker_energy_needed = len(strikers_ready)
+        
+        reserved_energy = min(active_player.energy, striker_energy_needed)
+        
+        # If we have a potential breach with other units, add that too
+        if potential_total_damage > enemy_block and potential_total_damage > striker_energy_needed:
+             reserved_energy = max(reserved_energy, total_attack_energy_cost)
 
         # Ability Use (Non-Miner)
+        
+        # 1. Wall Repair (All strategies)
+        exhausted_walls = [u for u in active_player.get_units_by_type("wall") if u.exhausted]
+        for i in range(len(exhausted_walls)):
+            if active_player.energy > reserved_energy:
+                success, _ = engine.use_ability("wall", i+1)
+                if success: self.log("Repaired Wall")
+
         if strat == "Random" or strat == "Aggressive":
             others = ["overcharger", "volatile"]
             for unit_type in others:
@@ -392,13 +407,25 @@ class Agent:
             # For now, just iterate and take what we can afford.
             for u in ready_units:
                 if energy_avail >= u.attack_cost:
-                    u_type = u.name.lower()
-                    units_to_use[u_type] = units_to_use.get(u_type, 0) + 1
-                    energy_avail -= u.attack_cost
-                    total_damage += u.attack
+                    # Logic to decide if this unit should attack
+                    should_attack = False
+                    if u.name == "Striker":
+                        should_attack = True # Strikers ALWAYS attack if energy available
+                    elif u.name == "Guard" and enemy_potential_attack == 0:
+                        should_attack = True # Guards attack only if safe
+                    elif u.name == "Volatile" and (u.attack > 0): # Detonated volatiles always attack
+                        should_attack = True
+                    elif u.name not in ["Striker", "Guard", "Volatile"] and u.attack > 0:
+                        # Other units (like Overcharger/Energizer) attack if possible
+                        should_attack = True
+
+                    if should_attack:
+                        u_type = u.name.lower()
+                        units_to_use[u_type] = units_to_use.get(u_type, 0) + 1
+                        energy_avail -= u.attack_cost
+                        total_damage += u.attack
             
-            if total_damage > enemy_block:
-                 if total_damage > 0:
-                     unit_list = list(units_to_use.items())
-                     success, msg = engine.prepare_attackers(unit_list)
-                     if success: self.log(f"Attacking with {total_damage} damage using {unit_list}", turn=game.turn_number)
+            if total_damage > 0:
+                unit_list = list(units_to_use.items())
+                success, msg = engine.prepare_attackers(unit_list)
+                if success: self.log(f"Attacking with {total_damage} damage using {unit_list}", turn=game.turn_number)

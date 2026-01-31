@@ -101,6 +101,8 @@ class GameEngine:
                 if unit not in self.attacking_units:
                     self.attacking_units.append(unit)
             return success, message
+        elif unit.name == "Wall":
+            return unit.repair(player)
         else:
             return False, f"{unit.name} has no usable ability"
             

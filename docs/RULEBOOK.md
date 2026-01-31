@@ -44,7 +44,7 @@ There is no limit to how much you can hold, but totals are designed to usually s
 
 * **2 Gold** and **1 Energy**
 * **1 Miner** and **1 Energizer** (Ready)
-* **Player 2 Advantage:** Starts with **+1 Gold** (Total 3 Gold)
+* **Player 2 Advantage:** Starts with one additional **Barrier** unit (Ready).
 
 Both players set their Base to **10 Health**.
 Choose a starting player randomly.
@@ -139,7 +139,7 @@ Exhausted units cannot block.
 ### 🟡 Miner
 
 **Cost:** 2 Gold  
-**Stats:** 0 ATK / 0 BLK / 1 HP
+**Stats:** 0 ATK / 1 BLK / 1 HP
 
 **Ability — Mine (Exhaust):**  
 Spend **1 Energy → Gain 1 Gold**
@@ -184,8 +184,11 @@ Basic defensive unit.
 **Cost:** 3 Gold  
 **Stats:** 0 ATK / 2 BLK / 0 HP (Limit 3 per player)
 
-**Special:** Walls enter play **READY** (not exhausted).
-Heavy defensive structure. Walls provide significant block but are destroyed **"for free"** (without consuming damage pool) if the block is broken and damage is assigned to them.
+**Special:** Walls do NOT ready automatically at the start of your turn.
+If used to block, the Wall becomes exhausted. To use it again, you must **Repair** it during your Action Phase.
+
+**Ability — Repair (Exhausted, 1 Energy):**  
+Ready this Wall so it can block again next turn.
 
 ---
 
