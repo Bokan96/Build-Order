@@ -9,6 +9,7 @@ from .game_engine import GameEngine
 from .units import UNIT_TYPES
 from .agent import Agent
 import time
+import random
 
 # Unit descriptions for help system
 UNIT_HELP = {
@@ -348,7 +349,7 @@ def main():
     ai_agent = None
     if mode == "2":
         print("\nCHOOSE AI STRATEGY:")
-        strats = ["Aggressive", "Guard", "Wall", "Reactive", "Random"]
+        strats = ["Aggressive", "Tactical", "Guard", "Wall", "Reactive", "Random"]
         for i, s in enumerate(strats):
              print(f"  {i+1}. {s}")
         choice = input(f"\nSelect (1-{len(strats)}): ").strip()
@@ -391,35 +392,25 @@ def main():
         
         # AI Turn Handling
         if is_ai_turn:
-            # Log phase transitions for AI
-            if game.phase == "Defense":
-                # AI assigns blockers
-                ai_agent.logger.write(f"\n--- DEFENSE PHASE (AI) ---\n")
-                ai_agent.execute_turn(game, engine)
-                
-                # If combat resolved or no damage to assign, AI will move to Action
-                # If combat NOT resolved (interactive), we break to let human assign
-                if game.phase == "Defense":
-                    # Human needs to assign damage
-                    pass 
-                else:
-                    # AI finished defense, we loop once more to handle AI Action
-                    continue
-            
-            elif game.phase == "Action":
+            # 1. Action Phase
+            if game.phase == "Action":
                 print(f"\n[AI] {game.current_player.name} is thinking...")
                 time.sleep(1)
                 ai_agent.logger.write(f"\n--- ACTION PHASE (AI) ---\n")
-                
-                # Run AI Action Logic
                 ai_agent.execute_turn(game, engine)
-                
-                # AI ends its turn
                 ai_agent.logger.write(f"AI finished action phase.\n")
+                engine.defense_phase()
+            
+            # 2. Defense Phase
+            if game.phase == "Defense":
+                ai_agent.logger.write(f"\n--- DEFENSE PHASE (AI) ---\n")
+                ai_agent.execute_turn(game, engine)
+                # If AI finished defense, it moves to Resolve in execute_turn or we handle here
+            
+            # 3. Finalize Turn
+            if game.phase in ["Defense", "ActionDone", "End"]:
                 engine.end_phase()
                 engine.end_turn()
-                
-                # Setup human turn
                 engine.start_phase()
                 engine.action_phase()
                 
@@ -857,66 +848,29 @@ def main():
                 if remaining > 0:
                     handle_combat_resolution(game, engine, ai_agent)
                 
-                # Transition to Action phase
-                msgs = []
-                msgs.append("Defense Phase Complete.")
-                msgs.append(engine.end_phase())
-                game.current_player.units_purchased = 0
-                msgs.append(engine.action_phase())
+                # Turn is over after defense now!
+                print(engine.end_phase())
+                print(engine.end_turn())
+                print(engine.start_phase())
+                print(engine.action_phase())
                 
                 clear_screen()
                 game.display_full_state()
                 print("-" * 60)
-                print("\n".join(msgs))
                 continue
 
             elif game.phase == "Action":
-                # End of Action Phase - attackers are already prepared (if any)
-                msgs = []
-                
-                if engine.attacking_units:
-                    total_attack = sum(u.attack for u in engine.attacking_units)
-                    msgs.append(f"Prepared attack: {len(engine.attacking_units)} unit(s), {total_attack} total damage")
-                    msgs.append("(Attack will resolve at the start of opponent's turn)")
-                
-                msgs.append(engine.end_phase())
-                msgs.append(engine.end_turn())
-                start_msg = engine.start_phase()
-                msgs.append(start_msg)
-                
-                # Check if the new player needs to defend
-                if game.phase == "Defense":
-                    if "[NO BLOCKERS AVAILABLE]" in start_msg:
-                        # Auto-forward logic
-                        clear_screen()
-                        game.display_full_state()
-                        print("-" * 60)
-                        print("\n".join(msgs))
-                        
-                        handle_combat_resolution(game, engine, ai_agent)
-                        
-                        # Proceed to Action Phase (simulating end of defense)
-                        msgs = []
-                        msgs.append("Defense Phase Complete.")
-                        msgs.append(engine.end_phase())
-                        game.current_player.units_purchased = 0
-                        msgs.append(engine.action_phase())
-                        
-                        clear_screen()
-                        game.display_full_state()
-                        print("-" * 60)
-                        print("\n".join(msgs))
-                        continue
-                    else:
-                        # Normal defense phase waiting for input
-                        pass
-                else:
-                    msgs.append(engine.action_phase())
+                print(engine.defense_phase())
+                if game.phase != "Defense":
+                     engine.end_phase()
+                     engine.end_turn()
+                     engine.start_phase()
+                     engine.action_phase()
                 
                 clear_screen()
                 game.display_full_state()
                 print("-" * 60)
-                print("\n".join(msgs))
+                continue
 
             elif game.phase == "Defense":
                 # During Defense phase, use 'block end' instead

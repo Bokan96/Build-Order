@@ -26,27 +26,36 @@ class GameEngine:
         player.reset_unit_damage()
         self.game.other_player.reset_unit_damage()
 
+        msg = "Start Phase: Readied all units."
+        if self.game.pending_attackers:
+            total_damage = sum(u.attack for u in self.game.pending_attackers)
+            msg += f"\n[NOTICE] Incoming attack discovered: {total_damage} damage."
+            
+        self.game.phase = "Start"
+        return msg
+
+    def defense_phase(self):
+        """Enter the Defense Phase after actions are complete."""
+        player = self.game.current_player
+        
         if self.game.pending_attackers:
             self.game.phase = "Defense"
             self.attacking_units = self.game.pending_attackers
             self.game.pending_attackers = []
-            self.blocking_units = [] # Clear blocking units for the new attack
-            self.assigned_damage = 0 # Reset assigned damage for the new attack
+            self.blocking_units = [] 
+            self.assigned_damage = 0 
             
             total_damage = sum(u.attack for u in self.attacking_units)
-            
-            # Check if defender has any ready units with block value
             ready_blockers = [u for u in player.units if not u.exhausted and u.block > 0]
             
             if ready_blockers:
                 return f"Defense Phase: INCOMING ATTACK! {total_damage} damage incoming.\nYou may assign blockers."
             else:
-                # No blockers available - flag for auto-forward
-                return f"Defense Phase: INCOMING ATTACK! {total_damage} damage incoming.\n[NO BLOCKERS AVAILABLE]"
-            
-        # 2. Normal Start Phase
-        self.game.phase = "Start"
-        return "Start Phase: Readied all units."
+                return f"Defense Phase: INCOMING ATTACK! {total_damage} damage incoming.\n[NO READY BLOCKERS AVAILABLE]"
+        
+        # No attack to defend against
+        self.game.phase = "ActionDone" # Temporary state
+        return "No incoming attack. Proceeding to Resolve."
         
     def action_phase(self):
         """Enter the Action Phase."""

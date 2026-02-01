@@ -64,50 +64,38 @@ Players alternate turns. Each turn has up to **4 phases**:
 
 ---
 
-### 2️⃣ Defense Phase ⚠️ (Conditional)
+### 2️⃣ Action Phase
 
-*This phase only occurs if your opponent attacked on their previous turn.*
+You may perform these in any order:
+
+#### ⚙️ Use Abilities
+* Units with abilities must **exhaust** to use them.
+* **Important:** If you use a unit here, it is exhausted and **cannot block** in the following Defense Phase of this turn!
+
+#### 🛒 Buy Units
+* You may buy up to **2 units** per turn.
+* **Cost:** Pay the unit's cost. **Penalty:** The second unit costs **+1 Energy**.
+* **Global Cap:** Max **5** of each type (**3** for Walls).
+* New units enter play **EXHAUSTED**.
+
+#### ⚔️ Prepare Attackers
+* Exhaust units you want to attack with.
+* **Cost:** **Striker** costs **1 Energy** to attack.
+* *Attacks resolve at the end of your opponent's next turn (during their Defense Phase).*
+
+---
+
+### 3️⃣ Defense Phase ⚠️ (Conditional)
+
+*This phase occurs at the end of your turn if your opponent attacked on their last turn.*
 
 1. **Incoming Attack:** You are shown the total damage incoming.
 2. **Assign Blockers (Defender):** You may assign any number of **ready** units to block.
-   * `block <unit>` adds blockers incrementally. Use `block clear` to reset if you make a mistake.
-   * Each blocker absorbs damage equal to its **Block** value.
-   * Use `block end` to finish blocking if you choose to take some damage.
-   * *Blocking does not damage your units* — it's more like armor.
-   * If you have no blockers, this phase is skipped automatically.
-3. **Attacker Assigns Damage:** Any **unblocked damage** (Total ATK - Total Block) is assigned by the **Original Attacker** to:
+   * Units used in the Action Phase are already exhausted and unavailable!
    * **Your Units:** They can choose to destroy specific targets.
    * **Your Base:** Any remaining damage hits your Base.
 
 *Strategy:* If you block everything, the opponent cannot target your units! If you let damage through, they choose what dies.
-
----
-
-### 3️⃣ Action Phase
-
-You may perform these in any order:
-
-#### 🛒 Buy Units
-
-* You may buy up to **2 units** per turn.
-* **Cost:** Pay the unit's cost.
-* **Penalty:** The second unit you buy in a turn costs **+1 additional Energy**.
-* **Cap/Supply:** This is a **Lifetime Limit**. You cannot buy more than **5 units** of the same type (Limit **3** for **Walls**) per game. Once your supply of 3 Walls is destroyed, you cannot buy more.
-* New units enter play **EXHAUSTED**.
-
-#### ⚙️ Use Abilities
-
-* Units with abilities must **exhaust** to use them
-* You must have enough Energy to pay the cost
-
-#### ⚔️ Prepare Attackers
-
-* Exhaust any units you want to attack with.
-* **Cost:** Each **Striker** costs **1 Energy** to prepare for an attack.
-* *Attacks are resolved at the START of your OPPONENT'S next turn.*
-* *Special:* Using a **Volatile's** Detonate ability automatically prepares it for attack.
-
-**Exhaustion Limit:** A unit can only be used **once per turn**. It cannot use an ability AND attack (unless readied by an **Overcharger**).
 
 ---
 

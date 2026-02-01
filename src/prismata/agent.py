@@ -37,15 +37,31 @@ class Agent:
 
     def handle_defense(self, game, engine):
         defender = game.current_player
+        strat = self.strategy_name
+        
+        # Calculate incoming
+        total_atk = sum(u.attack for u in engine.attacking_units)
         
         # Simple defense: check for blockers
         available_blockers = [u for u in defender.units if not u.exhausted and u.block > 0]
+        # Sort blockers: non-economic first (Wall, Guard, Barrier, Striker, etc.)
+        available_blockers.sort(key=lambda u: 1 if u.name in ["Miner", "Energizer"] else 0)
+        
         for u in available_blockers:
+            total_blk = sum(u.block for u in engine.blocking_units)
+            unblocked = max(0, total_atk - total_blk)
+            if unblocked <= 0: break
+            
+            # TACTICAL RULE: Don't block with economy if damage is small and base is healthy
+            if strat == "Tactical" and u.name in ["Miner", "Energizer"]:
+                if unblocked <= 2 and defender.base_health > 5:
+                    self.log(f"Tactical Choice: Letting {unblocked} damage hit base to save {u.name}")
+                    continue
+            
             success, msg = engine.assign_blockers([(u.name.lower(), 1)])
             if success:
                 self.log(f"Blocked with {u.name}")
         
-        total_atk = sum(u.attack for u in engine.attacking_units)
         total_blk = sum(u.block for u in engine.blocking_units)
         unblocked = max(0, total_atk - total_blk)
         
@@ -57,9 +73,7 @@ class Agent:
             assignments = self.assign_damage(game, engine, unblocked)
             engine.resolve_combat(assignments)
         
-        engine.end_phase()
-        engine.action_phase() # Transition to action after defense
-        self.handle_action(game, engine)
+        # Note: Phase transition is handled by the caller (main.py)
 
     def assign_damage(self, game, engine, amount):
         """AI logic to assign damage to the opponent's board."""
@@ -89,6 +103,33 @@ class Agent:
         
         return assignments
 
+    def _get_opponent_threat(self, opponent):
+        """Calculate maximum potential damage the opponent can deal on their turn."""
+        # Potential energy from current Energizers
+        num_energizers = len(opponent.get_units_by_type("energizer"))
+        energy = num_energizers
+        
+        # Base threat from free attackers (Guard, Overcharger, etc.)
+        threat = 0
+        for u in opponent.units:
+            if u.name not in ["Striker", "Volatile"] and u.attack > 0:
+                threat += u.attack
+        
+        # Power the most efficient attackers first
+        # Volatiles: 1 energy for 5 damage (detonate)
+        num_volatiles = len(opponent.get_units_by_type("volatile"))
+        powered_volatiles = min(num_volatiles, energy)
+        threat += powered_volatiles * 5
+        energy -= powered_volatiles
+        
+        # Strikers: 1 energy for 2 damage
+        num_strikers = len(opponent.get_units_by_type("striker"))
+        powered_strikers = min(num_strikers, energy)
+        threat += powered_strikers * 2
+        energy -= powered_strikers
+        
+        return threat
+
     def handle_action(self, game, engine):
         active_player = game.current_player
         strat = self.strategy_name
@@ -103,7 +144,7 @@ class Agent:
         enemy = game.other_player
         enemy_ready_blockers = [u for u in enemy.units if u.block > 0 and not u.exhausted]
         enemy_block = sum(u.block for u in enemy_ready_blockers)
-        enemy_potential_attack = sum(u.attack for u in enemy.units if not u.exhausted)
+        enemy_potential_attack = self._get_opponent_threat(enemy)
         my_total_block = sum(u.block for u in active_player.units if not u.exhausted)
         
         ready_units = [u for u in active_player.units if not u.exhausted and (u.attack > 0 or u.name == "Volatile")]
@@ -136,12 +177,23 @@ class Agent:
 
         # Ability Use (Non-Miner)
         
-        # 1. Wall Repair (All strategies)
+        # 1. Wall Repair (Reactive Mode)
+        # Only repair if threatened, or if we have abundance of energy
+        is_threatened = enemy_potential_attack > my_total_block
         exhausted_walls = [u for u in active_player.get_units_by_type("wall") if u.exhausted]
         for i in range(len(exhausted_walls)):
-            if active_player.energy > reserved_energy:
+            should_repair = False
+            if is_threatened:
+                should_repair = True
+            elif active_player.energy > (reserved_energy + 2): # Spare energy
+                should_repair = True
+                
+            if should_repair and active_player.energy > 0:
                 success, _ = engine.use_ability("wall", i+1)
-                if success: self.log("Repaired Wall")
+                if success: 
+                    self.log("Repaired Wall")
+                    my_total_block += 2
+                    is_threatened = enemy_potential_attack > my_total_block
 
         if strat == "Random" or strat == "Aggressive":
             others = ["overcharger", "volatile"]
@@ -203,6 +255,17 @@ class Agent:
 
             should_skip = random.random() < 0.1
 
+            # EMERGENCY DEFENSE: Buy Wall if enemy attack exceeds our current block (Limit 3)
+            num_walls = active_player.lifetime_units.get("wall", 0)
+            if (enemy_potential_attack > my_total_block) and active_player.gold >= 3 and num_walls < 3:
+                success, _ = engine.buy_unit("wall")
+                if success:
+                    self.log("EMERGENCY DEFENSE: Threat detected, bought Wall")
+                    bought_this_step = True
+                    purchases += 1
+                    my_total_block += 2 # Update block count
+                    continue
+
             # KILLER INSTINCT: If our damage is enough to meet or breach enemy block, push for a win
             if potential_total_damage >= enemy_block and active_player.gold >= 3:
                 success, _ = engine.buy_unit("striker")
@@ -210,17 +273,6 @@ class Agent:
                     self.log("KILLER INSTINCT: Offensive window, buying striker")
                     bought_this_step = True
                     purchases += 1
-                    continue
-
-            # EMERGENCY DEFENSE: Buy Wall if enemy attack exceeds our current block (Limit 3)
-            num_walls = active_player.lifetime_units.get("wall", 0)
-            if enemy_potential_attack > my_total_block and active_player.gold >= 3 and num_walls < 3:
-                success, _ = engine.buy_unit("wall")
-                if success:
-                    self.log("EMERGENCY DEFENSE: Threat detected, bought Wall")
-                    bought_this_step = True
-                    purchases += 1
-                    my_total_block += 2 # Update block count
                     continue
 
             if strat == "Aggressive":
@@ -275,7 +327,7 @@ class Agent:
             elif strat == "Guard" or strat == "Wall":
                 # GREEDY DEFENSIVE: Only buy defense if threatened, else economy/counter
                 enemy = game.other_player
-                incoming = sum(u.attack for u in enemy.units if not u.exhausted or u.name == "Striker") # Striker logic
+                incoming = self._get_opponent_threat(enemy)
                 my_block = sum(u.block for u in active_player.units if not u.exhausted)
                 
                 if incoming > my_block:
@@ -330,7 +382,7 @@ class Agent:
                 num_strikers = active_player.lifetime_units.get("striker", 0)
                 
                 # Improved Reactive: Match damage + stay 2 ahead for safety
-                incoming_damage = sum(u.attack for u in enemy.units if not u.exhausted)
+                incoming_damage = self._get_opponent_threat(enemy)
                 my_blockers = [u for u in active_player.units if u.block > 0 and not u.exhausted]
                 # Barriers are fragile, count them as half-strength for long-term planning
                 current_block = sum(u.block if u.name != "Barrier" else 0.5 for u in my_blockers)
@@ -377,6 +429,46 @@ class Agent:
                                 self.log(f"Reactive: Defaulting to {target_unit}")
                                 bought_this_step = True
             
+            elif strat == "Tactical":
+                # TACTICAL: Prioritize economy, then defensive walls, then counter-attack
+                num_miners = active_player.lifetime_units.get("miner", 0)
+                num_energizers = active_player.lifetime_units.get("energizer", 0)
+                num_walls = active_player.lifetime_units.get("wall", 0)
+                num_strikers = active_player.lifetime_units.get("striker", 0)
+
+                # 1. Critical Defense
+                if enemy_potential_attack > my_total_block and active_player.gold >= 3 and num_walls < 3:
+                    success, _ = engine.buy_unit("wall")
+                    if success:
+                        self.log("Tactical: Buying Wall for defense")
+                        bought_this_step = True
+                        my_total_block += 2
+                
+                # 2. Economy Scaling
+                if not bought_this_step and (num_miners < 4 or num_energizers < 3):
+                    target_unit = "miner" if num_miners <= num_energizers else "energizer"
+                    if active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit(target_unit)
+                        if success:
+                            self.log(f"Tactical: Scaling economy with {target_unit}")
+                            bought_this_step = True
+                
+                # 3. Defensive padding
+                if not bought_this_step and enemy_potential_attack + 2 > my_total_block and num_walls < 3:
+                     if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit("wall")
+                        if success:
+                            self.log("Tactical: Adding defensive padding")
+                            bought_this_step = True
+                
+                # 4. Counter-Attack (only if economy is good)
+                if not bought_this_step and num_miners >= 3 and num_strikers < 4:
+                    if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit("striker")
+                        if success:
+                             self.log("Tactical: Economy secure, building counter-attack")
+                             bought_this_step = True
+            
             # LAST RESORT / SPARE ENERGY: Buy Barrier if we decided to buy nothing or have leftover energy
             if not bought_this_step and len(active_player.get_units_by_type("barrier")) < 5:
                 should_buy_barrier = False
@@ -411,8 +503,12 @@ class Agent:
                     should_attack = False
                     if u.name == "Striker":
                         should_attack = True # Strikers ALWAYS attack if energy available
-                    elif u.name == "Guard" and enemy_potential_attack == 0:
-                        should_attack = True # Guards attack only if safe
+                    elif u.name == "Guard":
+                        # Guards attack if safe OR if we have a breach (destroying enemy units > blocking them)
+                        if enemy_potential_attack == 0:
+                            should_attack = True
+                        elif potential_total_damage > enemy_block:
+                            should_attack = True
                     elif u.name == "Volatile" and (u.attack > 0): # Detonated volatiles always attack
                         should_attack = True
                     elif u.name not in ["Striker", "Guard", "Volatile"] and u.attack > 0:
