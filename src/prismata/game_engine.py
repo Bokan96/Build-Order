@@ -103,14 +103,9 @@ class GameEngine:
         elif unit.name == "Overcharger":
             if target is None:
                 return False, "Overcharge requires a target unit"
+            if not target.is_alive():
+                return False, f"Cannot overcharge {target.name} because it is about to be destroyed"
             return unit.overcharge(player, target)
-        elif unit.name == "Volatile":
-            success, message = unit.detonate(player)
-            if success:
-                # Automatically add to attackers since detonating is an offensive action
-                if unit not in self.attacking_units:
-                    self.attacking_units.append(unit)
-            return success, message
         elif unit.name == "Wall":
             return unit.repair(player)
         else:
@@ -164,6 +159,8 @@ class GameEngine:
             for i in range(count):
                 u = ready_units[i]
                 u.exhaust()
+                if u.name == "Volatile":
+                    u.current_health = 0 # Destroy at end of turn
                 self.prepared_squad.append(u)
                 units_added_this_batch += 1
             

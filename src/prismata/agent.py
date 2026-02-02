@@ -136,7 +136,7 @@ class Agent:
                 threat += u.attack
         
         # Power the most efficient attackers first
-        # Volatiles: 1 energy for 5 damage (detonate)
+        # Volatiles: 1 energy for 5 damage (high efficiency attacker)
         num_volatiles = len(opponent.get_units_by_type("volatile"))
         powered_volatiles = min(num_volatiles, energy)
         threat += powered_volatiles * 5
@@ -231,19 +231,15 @@ class Agent:
                     if strat == "Aggressive" or random.random() < 0.5:
                         if unit_type == "overcharger":
                             # Target the best unit (highest attack or most useful)
-                            exhausted = [u for u in active_player.units if u.exhausted]
+                            exhausted = [u for u in active_player.units if u.exhausted and u.is_alive()]
                             if exhausted:
-                                # Prioritize readying Strikers or Volatiles
-                                target = next((u for u in exhausted if u.name in ["Volatile", "Striker"]), random.choice(exhausted))
+                                # Prioritize readying Strikers or other offensive units
+                                target = next((u for u in exhausted if u.name == "Striker"), random.choice(exhausted))
                                 engine.use_ability(unit_type, i+1, target=target)
                                 self.log(f"Used Overcharger on {target.name}")
                         else:
-                            # Volatile: only detonate if enemy has block or if we are aggressive
-                            if strat == "Aggressive" or enemy_block > 0:
-                                success, _ = engine.use_ability(unit_type, i+1)
-                                if success:
-                                    self.log(f"Used {unit_type}")
-                                    self.record_action(f"Used {unit_type}")
+                            # Other abilities... (Non-volatile now)
+                            pass
 
         # Miners
         miners = active_player.get_units_by_type("miner")

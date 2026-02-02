@@ -144,13 +144,13 @@ class Wall(Unit):
 
 class Overcharger(Unit):
     """
-    Cost: 3 Gold + 1 Energy
-    Stats: 1 ATK / 1 BLK / 3 HP
+    Cost: 3 Gold
+    Stats: 0 ATK / 1 BLK / 2 HP
     Ability: Overcharge (Exhaust, 1 Energy) -> Ready another unit
     """
     
     def __init__(self):
-        super().__init__("Overcharger", gold_cost=3, energy_cost=1, attack=1, block=1, health=3)
+        super().__init__("Overcharger", gold_cost=3, energy_cost=0, attack=0, block=1, health=2)
         
     def overcharge(self, player, target_unit):
         """
@@ -175,30 +175,12 @@ class Overcharger(Unit):
 class Volatile(Unit):
     """
     Cost: 4 Gold
-    Stats: 3 ATK / 0 BLK / 2 HP
-    Ability: Detonate (Exhaust, 2 Energy) -> Destroy this unit, gain +3 Attack this turn
+    Stats: 5 ATK / 0 BLK / 2 HP
     """
     
     def __init__(self):
-        super().__init__("Volatile", gold_cost=4, energy_cost=0, attack=0, block=0, health=2)
-        self.detonated = False
-        
-    def detonate(self, player):
-        """
-        Use Detonate ability: Spend 1 Energy, destroy this unit, gain +5 Attack.
-        Returns True if successful, False otherwise.
-        """
-        if self.exhausted:
-            return False, "This Volatile is already exhausted"
-        if player.energy < 1:
-            return False, "Not enough energy (need 1)"
-            
-        player.energy -= 1
-        self.attack += 5  # Gain 5 attack
-        self.detonated = True
-        self.current_health = 0  # Will be destroyed at end of turn
-        self.exhaust()
-        return True, f"Detonated! This Volatile now has {self.attack} attack"
+        super().__init__("Volatile", gold_cost=4, energy_cost=0, attack=5, block=0, health=2)
+        self.attack_cost = 1 # Requires 1 Energy to attack
 
 
 class Barrier(Unit):

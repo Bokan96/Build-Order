@@ -182,8 +182,8 @@ Ready this Wall so it can block again next turn.
 
 ### ⚡ Overcharger
 
-**Cost:** 3 Gold + 1 Energy  
-**Stats:** 1 ATK / 1 BLK / 3 HP
+**Cost:** 3 Gold  
+**Stats:** 0 ATK / 1 BLK / 2 HP
 
 **Ability — Overcharge (Exhaust, 1 Energy):**  
 Ready another unit.
@@ -195,12 +195,10 @@ Allows double use of key units.
 ### 💥 Volatile
 
 **Cost:** 4 Gold  
-**Stats:** 0 ATK / 0 BLK / 2 HP
+**Stats:** 5 ATK / 0 BLK / 2 HP
 
-**Ability — Detonate (Exhaust, 1 Energy):**  
-Destroy this unit → it gains **+5 Attack** this turn and is automatically added to your attackers.
-
-Massive burst finisher. Note that this unit will be removed at the end of the turn it detonates.
+**Trait — Self-Destruct:** If this unit is used to attack, it is destroyed at the end of the turn.
+Requires **1 Energy** to attack (like a Striker).
 
 ---
 

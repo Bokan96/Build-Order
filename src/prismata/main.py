@@ -61,8 +61,8 @@ Usage: 'wall' to repair (costs 1 Energy).
 """,
     "overcharger": """
 OVERCHARGER - Utility Unit
-Cost: 3 Gold + 1 Energy
-Stats: 1 ATK / 1 BLK / 3 HP
+Cost: 3 Gold
+Stats: 0 ATK / 1 BLK / 2 HP
 
 Ability: OVERCHARGE (Exhaust, costs 1 Energy)
   - Ready another unit (allows it to be used again this turn)
@@ -72,12 +72,12 @@ Ability: OVERCHARGE (Exhaust, costs 1 Energy)
     "volatile": """
 VOLATILE - Burst Damage
 Cost: 4 Gold
-Stats: 3 ATK / 0 BLK / 2 HP
+Stats: 5 ATK / 0 BLK / 2 HP
 
-Ability: DETONATE (Exhaust, costs 1 Energy)
-  - Destroy this unit to gain +5 Attack (total 8 ATK!)
-  - Massive burst finisher
-  - Usage: 'volatile 1' or 'v'
+Mechanic: SELF-DESTRUCT
+  - Costs 1 Energy to attack (like a super-Striker)
+  - Unit is destroyed at the end of the turn it attacks
+  - Usage: 'attack volatile' or 'v'
 """,
     "barrier": """
 BARRIER - Cheap Blocker
@@ -150,9 +150,9 @@ def show_unit_shop():
         ("Energizer", "2G", "0/0/2", "Generate: Gain 1E"),
         ("Striker", "3G", "2/0/1", "Atk Cost: 1E"),
         ("Guard", "3G", "1/2/2", "Basic blocker/attacker"),
-        ("Overcharger", "3G+1E", "1/1/3", "Ready another unit"),
+        ("Overcharger", "3G", "0/1/2", "Ready another unit"),
         ("Wall", "3G", "0/2/2", "Heavy blocker (repair: 1E)"),
-        ("Volatile", "4G", "3/0/2", "Detonate: +5 ATK (8 total)"),
+        ("Volatile", "4G", "5/0/2", "Attacker (Destroyed after use)"),
     ]
     
     print(f"\n{'Unit':<15} {'Cost':<12} {'ATK/BLK/HP':<12} {'Ability'}")

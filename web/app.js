@@ -35,6 +35,17 @@ class PrismataWeb {
             'volatile': '🧨',
             'barrier': '🚧'
         };
+
+        this.unitImages = {
+            'miner': 'assets/cards/Miner.webp',
+            'energizer': 'assets/cards/Energizer.webp',
+            'striker': 'assets/cards/Striker.webp',
+            'guard': 'assets/cards/Guard.webp',
+            'wall': 'assets/cards/Wall.webp',
+            'overcharger': 'assets/cards/Repeater.webp',
+            'volatile': 'assets/cards/Volitile.webp',
+            'barrier': 'assets/cards/Barrier.webp'
+        };
     }
 
     async init() {
@@ -184,9 +195,12 @@ class PrismataWeb {
         units.forEach((unit, index) => {
             const card = document.createElement('div');
             card.className = `unit-card ${unit.exhausted ? 'exhausted' : ''}`;
+            const imgUrl = this.unitImages[unit.type];
             card.innerHTML = `
                 <div class="unit-name">${unit.name}</div>
-                <div class="unit-art">${this.unitIcons[unit.type] || '❓'}</div>
+                <div class="unit-art" style="background-image: url('${imgUrl}')">
+                    ${!imgUrl ? (this.unitIcons[unit.type] || '❓') : ''}
+                </div>
                 <div class="stat-line">
                     <span class="atk-val">${unit.atk}</span>
                     <span class="blk-val">${unit.blk}</span>
@@ -226,7 +240,7 @@ class PrismataWeb {
     // -- Game Actions --
 
     async handleUnitClick(unit, unitNumber) {
-        if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'volatile' || unit.type === 'wall') {
+        if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
             const result = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
             this.processActionResult(result);
         } else if (unit.type === 'overcharger') {
@@ -386,7 +400,7 @@ class PrismataWeb {
             { id: 'striker', name: 'Striker', cost: '3G' },
             { id: 'guard', name: 'Guard', cost: '3G' },
             { id: 'wall', name: 'Wall', cost: '3G' },
-            { id: 'overcharger', name: 'Overcharger', cost: '3G+1E' },
+            { id: 'overcharger', name: 'Overcharger', cost: '3G' },
             { id: 'volatile', name: 'Volatile', cost: '4G' },
             { id: 'barrier', name: 'Barrier', cost: '1G' }
         ];
@@ -395,8 +409,11 @@ class PrismataWeb {
         shopUnits.forEach(u => {
             const item = document.createElement('div');
             item.className = 'buy-item';
+            const imgUrl = this.unitImages[u.id];
             item.innerHTML = `
-                <div class="unit-art" style="font-size: 2rem;">${this.unitIcons[u.id]}</div>
+                <div class="unit-art" style="width: 80px; height: 100px; font-size: 2rem; background-image: url('${imgUrl}')">
+                    ${!imgUrl ? (this.unitIcons[u.id] || '❓') : ''}
+                </div>
                 <div class="unit-name">${u.name}</div>
                 <div class="cost-tag">${u.cost}</div>
             `;
