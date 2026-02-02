@@ -10,7 +10,8 @@ class GameEngine:
     
     def __init__(self, game_state):
         self.game = game_state
-        self.attacking_units = []  # Units prepared to attack
+        self.attacking_units = []  # Units currently attacking the player (for Defense)
+        self.prepared_squad = []   # Units prepared this turn to attack NEXT turn
         self.blocking_units = []   # Units assigned to block
         self.assigned_damage = 0   # Track damage assigned this turn
 
@@ -123,13 +124,27 @@ class GameEngine:
         if self.game.phase != "Action":
             return False, "Can only prepare attackers during Action Phase"
             
-        self.attacking_units = []
         player = self.game.current_player
+        total_energy_needed = 0
+        units_added_this_batch = 0
         
         for unit_type, count in unit_list:
             units = player.get_units_by_type(unit_type)
             ready_units = [u for u in units if not u.exhausted]
             
+            if count == "all":
+                # How many can we afford/have ready?
+                if not ready_units:
+                    count = 0
+                elif ready_units[0].attack_cost == 0:
+                    count = len(ready_units)
+                else:
+                    max_affordable = player.energy // ready_units[0].attack_cost
+                    count = min(len(ready_units), max_affordable)
+            
+            if count <= 0:
+                continue
+
             if len(ready_units) < count:
                 return False, f"Not enough ready {unit_type}s (wanted {count}, have {len(ready_units)})"
                 
@@ -143,16 +158,18 @@ class GameEngine:
                  return False, f"Not enough energy to attack with {unit_type}s (Need {energy_needed}, Have {player.energy})"
 
             player.energy -= energy_needed
+            total_energy_needed += energy_needed
             
-            # Exhaust the first 'count' ready units
+            # Exhaust units
             for i in range(count):
                 u = ready_units[i]
                 u.exhaust()
-                self.attacking_units.append(u)
+                self.prepared_squad.append(u)
+                units_added_this_batch += 1
             
-        total_attack = sum(u.attack for u in self.attacking_units)
+        total_attack = sum(u.attack for u in self.prepared_squad)
         player.displayed_attack = total_attack
-        return True, f"Prepared {len(self.attacking_units)} units to attack (total {total_attack} damage, cost {energy_needed if 'energy_needed' in locals() else 0} energy)"
+        return True, f"Prepared {units_added_this_batch} units to attack (Total attackers: {len(self.prepared_squad)}, Total damage: {total_attack})"
         
     def attack_phase(self):
         """Enter the Attack Phase."""
@@ -177,17 +194,24 @@ class GameEngine:
         
         for unit_type, count in unit_list:
             units = defender.get_units_by_type(unit_type)
-            # Defenders must be ready
-            ready_units = [u for u in units if not u.exhausted]
+            # Defenders must be ready and not ALREADY blocking
+            available_units = [u for u in units if not u.exhausted and u not in self.blocking_units]
             
-            if len(ready_units) < count:
-                return False, f"Not enough ready {unit_type}s to block (wanted {count}, have {len(ready_units)})"
+            if count == "all":
+                count = len(available_units)
+                
+            if count <= 0:
+                continue
+
+            if len(available_units) < count:
+                return False, f"Not enough available {unit_type}s to block (wanted {count}, have {len(available_units)})"
                 
             for i in range(count):
-                u = ready_units[i]
-                u.exhaust() # Exhaust the unit for blocking
+                u = available_units[i]
+                if u.name == "Wall":
+                    u.exhaust() # Walls exhaust when blocking in this Lite version
                 self.blocking_units.append(u)
-                added_count += count # Note: this is actually 'count' per iteration? No, +1 per unit
+                added_count += 1
         
         total_block = sum(u.block for u in self.blocking_units)
         defender.displayed_block = total_block
@@ -319,10 +343,14 @@ class GameEngine:
         
     def end_turn(self):
         """End the current turn and switch players."""
-        # Queue prepared attackers for the opponent
-        if self.attacking_units:
-             self.game.pending_attackers = self.attacking_units
-             self.attacking_units = []
+        # Queue prepared squad for the opponent
+        if self.prepared_squad:
+             self.game.pending_attackers = self.prepared_squad
+             self.prepared_squad = []
+        else:
+             # Ensure pending_attackers is empty if nothing new was prepared?
+             # Actually, if we didn't prepare anything, there are no attackers for next turn.
+             self.game.pending_attackers = []
              
         self.game.switch_player()
         self.game.turn_number += 1

@@ -42,7 +42,7 @@ There is no limit to how much you can hold, but totals are designed to usually s
 
 ### 🏁 Setup
 
-* **2 Gold** and **1 Energy**
+* **2 Gold** and **0 Energy**
 * **1 Miner** and **1 Energizer** (Ready)
 * **Player 2 Advantage:** Starts with one additional **Barrier** unit (Ready).
 

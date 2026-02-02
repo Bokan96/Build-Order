@@ -10,8 +10,7 @@ class Agent:
         turn_str = f" [Turn {turn}]" if turn else ""
         if self.logger:
             self.logger.write(f"AI ({self.strategy_name}){turn_str}: {message}\n")
-        else:
-            print(f"AI ({self.strategy_name}){turn_str}: {message}")
+        # Console output for AI actions is handled by summaries in main.py
 
     def get_economic_target(self, active_player, preferred_unit):
         """Rule: Buy energizers instead of Miners if num_energizers < num_miners."""
@@ -25,15 +24,35 @@ class Agent:
     def execute_turn(self, game, engine):
         active_player = game.current_player
         strat = self.strategy_name
-
-        # 1. Start Phase is handled by the caller or engine naturally if used in main loop
-        # But we'll assume we are in Action Phase when called, or handle Defense if needed.
+        
+        # Only clear actions if we've moved to a new turn round or changed player
+        turn_key = f"{game.turn_number}_{active_player.name}"
+        if not hasattr(self, '_last_turn_key') or self._last_turn_key != turn_key:
+            self.turn_actions = []
+            self._last_turn_key = turn_key
 
         if game.phase == "Defense":
             self.handle_defense(game, engine)
         
         if game.phase == "Action":
             self.handle_action(game, engine)
+        
+        # Summarize actions at end of turn
+        summary = []
+        counts = {}
+        order = []
+        for a in self.turn_actions:
+            if a not in counts: order.append(a)
+            counts[a] = counts.get(a, 0) + 1
+            
+        for a in order:
+            count = counts[a]
+            summary.append(f"{a} (x{count})" if count > 1 else a)
+            
+        return summary
+
+    def record_action(self, action):
+        self.turn_actions.append(action)
 
     def handle_defense(self, game, engine):
         defender = game.current_player
@@ -47,20 +66,21 @@ class Agent:
         # Sort blockers: non-economic first (Wall, Guard, Barrier, Striker, etc.)
         available_blockers.sort(key=lambda u: 1 if u.name in ["Miner", "Energizer"] else 0)
         
+        blocked_units = {}
         for u in available_blockers:
             total_blk = sum(u.block for u in engine.blocking_units)
             unblocked = max(0, total_atk - total_blk)
             if unblocked <= 0: break
             
-            # TACTICAL RULE: Don't block with economy if damage is small and base is healthy
-            if strat == "Tactical" and u.name in ["Miner", "Energizer"]:
-                if unblocked <= 2 and defender.base_health > 5:
-                    self.log(f"Tactical Choice: Letting {unblocked} damage hit base to save {u.name}")
-                    continue
-            
             success, msg = engine.assign_blockers([(u.name.lower(), 1)])
             if success:
-                self.log(f"Blocked with {u.name}")
+                blocked_units[u.name] = blocked_units.get(u.name, 0) + 1
+        
+        if blocked_units:
+            summary = ", ".join([f"{count} {name}{'s' if count > 1 else ''}" for name, count in blocked_units.items()])
+            if self.logger:
+                self.logger.write(f"{defender.name} blocked with: {summary}\n")
+            self.record_action(f"Blocked with {summary}")
         
         total_blk = sum(u.block for u in engine.blocking_units)
         unblocked = max(0, total_atk - total_blk)
@@ -136,9 +156,15 @@ class Agent:
 
         # Resources
         energizers = active_player.get_units_by_type("energizer")
+        energizers_used = 0
         for i in range(len(energizers)):
             success, msg = engine.use_ability("energizer", i + 1)
-            if success: self.log("Used Energizer")
+            if success:
+                energizers_used += 1
+                self.record_action("Used Energizer")
+        
+        if energizers_used > 0:
+            self.log(f"Used {energizers_used} Energizers")
             
         # Calculate attack potential to reserve energy BEFORE mining or buying
         enemy = game.other_player
@@ -192,6 +218,7 @@ class Agent:
                 success, _ = engine.use_ability("wall", i+1)
                 if success: 
                     self.log("Repaired Wall")
+                    self.record_action("Repaired Wall")
                     my_total_block += 2
                     is_threatened = enemy_potential_attack > my_total_block
 
@@ -214,16 +241,23 @@ class Agent:
                             # Volatile: only detonate if enemy has block or if we are aggressive
                             if strat == "Aggressive" or enemy_block > 0:
                                 success, _ = engine.use_ability(unit_type, i+1)
-                                if success: self.log(f"Used {unit_type}")
+                                if success:
+                                    self.log(f"Used {unit_type}")
+                                    self.record_action(f"Used {unit_type}")
 
         # Miners
         miners = active_player.get_units_by_type("miner")
+        miners_used = 0
         for i in range(len(miners)):
             if active_player.energy <= reserved_energy: break
             # ECONOMIC CAP: Stop mining if already wealthy, UNLESS we have spare energy
             if active_player.gold > 5 and active_player.energy <= reserved_energy + 1: break
             success, _ = engine.use_ability("miner", i + 1)
-            if success: self.log("Mined 1 Gold")
+            if success:
+                miners_used += 1
+                self.record_action("Used Miner")
+        if miners_used > 0:
+            self.log(f"Used {miners_used} Miners")
 
         # Buying
         purchases = 0
@@ -237,6 +271,7 @@ class Agent:
                     success, _ = engine.buy_unit("barrier")
                     if success: 
                         self.log("Bought Barrier")
+                        self.record_action("Bought Barrier")
                         bought_this_step = True
                         purchases += 1
                         continue
@@ -249,6 +284,7 @@ class Agent:
                     success, _ = engine.buy_unit(unit_name)
                     if success:
                         self.log(f"RANDOM ACTION: Bought {unit_name}")
+                        self.record_action(f"Bought {unit_name}")
                         bought_this_step = True
                         purchases += 1
                         continue
@@ -260,7 +296,8 @@ class Agent:
             if (enemy_potential_attack > my_total_block) and active_player.gold >= 3 and num_walls < 3:
                 success, _ = engine.buy_unit("wall")
                 if success:
-                    self.log("EMERGENCY DEFENSE: Threat detected, bought Wall")
+                    self.log("Bought Wall")
+                    self.record_action("Bought Wall")
                     bought_this_step = True
                     purchases += 1
                     my_total_block += 2 # Update block count
@@ -271,6 +308,7 @@ class Agent:
                 success, _ = engine.buy_unit("striker")
                 if success:
                     self.log("KILLER INSTINCT: Offensive window, buying striker")
+                    self.record_action("Bought Striker")
                     bought_this_step = True
                     purchases += 1
                     continue
@@ -287,6 +325,7 @@ class Agent:
                                 success, _ = engine.buy_unit("striker")
                                 if success: 
                                     self.log("Bought Striker")
+                                    self.record_action("Bought Striker")
                                     bought_this_step = True
                     else:
                         if num_energizers < 5:
@@ -294,6 +333,7 @@ class Agent:
                                 success, _ = engine.buy_unit("energizer")
                                 if success: 
                                     self.log("Bought Energizer")
+                                    self.record_action("Bought Energizer")
                                     bought_this_step = True
                 
                 if not bought_this_step and num_miners < 5:
@@ -302,6 +342,7 @@ class Agent:
                         success, _ = engine.buy_unit(target_unit)
                         if success: 
                             self.log(f"Bought {target_unit}")
+                            self.record_action(f"Bought {target_unit}")
                             bought_this_step = True
                 
                 if not bought_this_step:
@@ -311,17 +352,20 @@ class Agent:
                              success, _ = engine.buy_unit("volatile")
                              if success: 
                                  self.log("Aggressive: Buying Volatile for breach")
+                                 self.record_action("Bought Volatile")
                                  bought_this_step = True
                          
                          if not bought_this_step:
                              success, _ = engine.buy_unit("striker")
                              if success: 
-                                 self.log("Bought Striker (fallback)")
+                                 self.log("Bought Striker")
+                                 self.record_action("Bought Striker")
                                  bought_this_step = True
                      elif num_energizers < 5 and active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
                          success, _ = engine.buy_unit("energizer")
                          if success: 
-                             self.log("Bought Energizer (fallback)")
+                             self.log("Bought Energizer")
+                             self.record_action("Bought Energizer")
                              bought_this_step = True
 
             elif strat == "Guard" or strat == "Wall":
@@ -335,7 +379,8 @@ class Agent:
                     if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
                         success, _ = engine.buy_unit(unit_to_buy)
                         if success:
-                            self.log(f"Threat detected! Bought {unit_to_buy}")
+                            self.log(f"Bought {unit_to_buy}")
+                            self.record_action(f"Bought {unit_to_buy}")
                             bought_this_step = True
                 
                 if not bought_this_step:
@@ -347,6 +392,7 @@ class Agent:
                             success, _ = engine.buy_unit("striker")
                             if success:
                                 self.log("Greedy: Wealthy! Switching to counter-attack")
+                                self.record_action("Bought Striker")
                                 bought_this_step = True
 
                     if not bought_this_step and num_miners < 5 and active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
@@ -354,6 +400,7 @@ class Agent:
                         success, _ = engine.buy_unit(target_unit)
                         if success:
                             self.log(f"Greedy: Investing in {target_unit}")
+                            self.record_action(f"Bought {target_unit}")
                             bought_this_step = True
                     # Then Counter-Attack
                     elif not bought_this_step:
@@ -362,6 +409,7 @@ class Agent:
                             success, _ = engine.buy_unit("striker")
                             if success:
                                 self.log("Greedy: Building counter-striker")
+                                self.record_action("Bought Striker")
                                 bought_this_step = True
             
             elif strat == "Random":
@@ -373,6 +421,7 @@ class Agent:
                         success, _ = engine.buy_unit(unit_name)
                         if success:
                             self.log(f"Bought {unit_name}")
+                            self.record_action(f"Bought {unit_name}")
                             bought_this_step = True
                             break
 
@@ -390,10 +439,11 @@ class Agent:
                 # PRE-EMPTIVE: If enemy has multiple attackers, get a baseline Wall
                 num_threats = len([u for u in enemy.units if u.attack > 0])
                 if num_threats > 1 and active_player.lifetime_units.get("wall", 0) < 1:
-                     if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
+                    if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
                         success, _ = engine.buy_unit("wall")
                         if success:
-                            self.log("Reactive: Pre-emptive Wall vs group")
+                            self.log("Bought Wall")
+                            self.record_action("Bought Wall")
                             bought_this_step = True
 
                 if not bought_this_step and incoming_damage + 2 > current_block:
@@ -402,7 +452,8 @@ class Agent:
                     if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
                         success, _ = engine.buy_unit(target_def)
                         if success:
-                            self.log(f"Reactive: Matching threat with {target_def}")
+                            self.log(f"Bought {target_def}")
+                            self.record_action(f"Bought {target_def}")
                             bought_this_step = True
                 
                 # If defense is solid, build economy or counter-attack
@@ -413,12 +464,14 @@ class Agent:
                             success, _ = engine.buy_unit(target_unit)
                             if success:
                                 self.log(f"Reactive: Secure, expanding {target_unit}")
+                                self.record_action(f"Bought {target_unit}")
                                 bought_this_step = True
                     elif active_player.lifetime_units.get("striker", 0) < 3:
                         if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
                             success, _ = engine.buy_unit("striker")
                             if success:
-                                self.log("Reactive: Secure, building counter-attack")
+                                self.log("Bought Striker")
+                                self.record_action("Bought Striker")
                                 bought_this_step = True
                     else:
                         # Default to buying miners
@@ -427,6 +480,7 @@ class Agent:
                             success, _ = engine.buy_unit(target_unit)
                             if success:
                                 self.log(f"Reactive: Defaulting to {target_unit}")
+                                self.record_action(f"Bought {target_unit}")
                                 bought_this_step = True
             
             elif strat == "Tactical":
@@ -441,6 +495,7 @@ class Agent:
                     success, _ = engine.buy_unit("wall")
                     if success:
                         self.log("Tactical: Buying Wall for defense")
+                        self.record_action("Bought Wall")
                         bought_this_step = True
                         my_total_block += 2
                 
@@ -451,6 +506,7 @@ class Agent:
                         success, _ = engine.buy_unit(target_unit)
                         if success:
                             self.log(f"Tactical: Scaling economy with {target_unit}")
+                            self.record_action(f"Bought {target_unit}")
                             bought_this_step = True
                 
                 # 3. Defensive padding
@@ -459,6 +515,7 @@ class Agent:
                         success, _ = engine.buy_unit("wall")
                         if success:
                             self.log("Tactical: Adding defensive padding")
+                            self.record_action("Bought Wall")
                             bought_this_step = True
                 
                 # 4. Counter-Attack (only if economy is good)
@@ -466,22 +523,18 @@ class Agent:
                     if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
                         success, _ = engine.buy_unit("striker")
                         if success:
-                             self.log("Tactical: Economy secure, building counter-attack")
-                             bought_this_step = True
+                            self.log("Tactical: Economy secure, building counter-attack")
+                            self.record_action("Bought Striker")
+                            bought_this_step = True
             
-            # LAST RESORT / SPARE ENERGY: Buy Barrier if we decided to buy nothing or have leftover energy
-            if not bought_this_step and len(active_player.get_units_by_type("barrier")) < 5:
-                should_buy_barrier = False
-                if purchases == 0 and active_player.gold >= 1:
-                    should_buy_barrier = True
-                elif purchases == 1 and active_player.gold >= 1 and active_player.energy >= (penalty + reserved_energy + 1):
-                    # Only buy a 2nd barrier if we have energy left over for next turn or defense
-                    should_buy_barrier = True
-                
-                if should_buy_barrier:
+            # BARRIER TACTIC: Only buy if we have spare resources after doing our initial purchase
+            # Condition: purchases > 0, gold > 3, and sufficient energy for second unit + reserved
+            if not bought_this_step and purchases > 0 and len(active_player.get_units_by_type("barrier")) < 5:
+                if active_player.gold > 3 and active_player.energy >= (penalty + reserved_energy + 1):
                     success, _ = engine.buy_unit("barrier")
                     if success:
-                        self.log("LAST RESORT: Buying Barrier with spare resources")
+                        self.log("BARRIER TACTIC: Adding cheap protection with surplus resources")
+                        self.record_action("Bought Barrier")
                         bought_this_step = True
 
             if bought_this_step: purchases += 1
@@ -524,4 +577,7 @@ class Agent:
             if total_damage > 0:
                 unit_list = list(units_to_use.items())
                 success, msg = engine.prepare_attackers(unit_list)
-                if success: self.log(f"Attacking with {total_damage} damage using {unit_list}", turn=game.turn_number)
+                if success:
+                    action_str = f"Attacking with {total_damage} damage using {', '.join([f'{c} {t.capitalize()}' for t,c in unit_list])}"
+                    self.log(action_str, turn=game.turn_number)
+                    self.record_action(action_str)

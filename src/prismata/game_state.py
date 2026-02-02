@@ -11,7 +11,7 @@ class Player:
     def __init__(self, name):
         self.name = name
         self.gold = 2
-        self.energy = 1
+        self.energy = 0
         self.base_health = 10
         self.units = []
         self.units_purchased = 0  # Track number of units bought this turn
@@ -146,6 +146,21 @@ class Player:
                     unit_summary.append(f"[{ready_count}/{total}]{unit_type}s")
             
             print(f"  Units: {', '.join(unit_summary)}")
+
+    def get_state_string(self):
+        """Return a single-line string of the player's current state."""
+        unit_groups = {}
+        for unit in self.units:
+            key = unit.name
+            unit_groups[key] = unit_groups.get(key, 0) + 1
+        
+        unit_summary = []
+        for name in sorted(unit_groups.keys()):
+            count = unit_groups[name]
+            unit_summary.append(f"{count} {name}{'s' if count > 1 else ''}")
+        
+        units_str = ", ".join(unit_summary) if unit_summary else "No units"
+        return f"{self.name}: {self.gold} Gold | Units: {units_str}"
 
 
 class GameState:
