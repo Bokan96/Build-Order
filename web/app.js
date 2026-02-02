@@ -10,17 +10,19 @@ class PrismataWeb {
         this.gameEngine = null;
         this.aiAgent = null;
         this.isLoaded = false;
+        this.selectedAI = null;
 
         // UI Elements
         this.elements = {
             loadingOverlay: document.getElementById('loading-overlay'),
+            welcomeScreen: document.getElementById('welcome-screen'),
+            aiSelectionScreen: document.getElementById('ai-selection-screen'),
             app: document.getElementById('app'),
             p1Units: document.getElementById('p1-units'),
             p2Units: document.getElementById('p2-units'),
             logEntries: document.getElementById('log-entries'),
             btnEnd: document.getElementById('btn-end'),
             btnBuy: document.getElementById('btn-buy'),
-            btnAttack: document.getElementById('btn-attack'),
             shopModal: document.getElementById('shop-modal'),
             shopGrid: document.getElementById('shop-grid')
         };
@@ -58,19 +60,58 @@ class PrismataWeb {
             this.updateLoadingText("Loading game files...");
             await this.mountFileSystem();
 
-            this.updateLoadingText("Starting game engine...");
-            this.setupGame();
-
-            this.bindEvents();
             this.isLoaded = true;
             this.hideLoading();
-            this.updateUI();
+            this.showWelcomeScreen();
 
-            this.log("Game Initialized. Welcome Commander.", "system");
         } catch (error) {
             console.error("Initialization failed:", error);
             this.updateLoadingText("Error: " + error.message);
         }
+    }
+
+    showWelcomeScreen() {
+        this.elements.welcomeScreen.classList.remove('hidden');
+
+        document.getElementById('btn-pve').onclick = () => {
+            this.elements.welcomeScreen.classList.add('hidden');
+            this.showAISelection();
+        };
+    }
+
+    showAISelection() {
+        this.elements.aiSelectionScreen.classList.remove('hidden');
+
+        document.querySelectorAll('.ai-choice').forEach(btn => {
+            btn.onclick = () => {
+                this.selectedAI = btn.getAttribute('data-ai');
+                this.startGame();
+            };
+        });
+
+        document.getElementById('btn-back-to-menu').onclick = () => {
+            this.elements.aiSelectionScreen.classList.add('hidden');
+            this.elements.welcomeScreen.classList.remove('hidden');
+        };
+    }
+
+    startGame() {
+        this.elements.aiSelectionScreen.classList.add('hidden');
+        this.updateLoadingText("Starting game engine...");
+        this.elements.loadingOverlay.style.display = 'flex';
+        this.elements.loadingOverlay.style.opacity = '1';
+
+        setTimeout(() => {
+            this.setupGame();
+            this.bindEvents();
+            this.elements.loadingOverlay.style.opacity = '0';
+            setTimeout(() => {
+                this.elements.loadingOverlay.style.display = 'none';
+                this.elements.app.classList.remove('hidden');
+                this.updateUI();
+                this.log(`Game Initialized. Battling ${this.selectedAI} AI.`, "system");
+            }, 500);
+        }, 100);
     }
 
     async mountFileSystem() {
@@ -112,7 +153,7 @@ class PrismataWeb {
             game = GameState("Player 1", "AI Opponent")
             game.setup_game()
             engine = GameEngine(game)
-            ai = Agent("Tactical") # Responsive Tactical AI
+            ai = Agent("${this.selectedAI || 'Aggressive'}") # Use selected AI
             
             # Helper to get state as dict for JS
             def get_ui_bundle():
@@ -190,23 +231,15 @@ class PrismataWeb {
     renderUnits(container, units, isFriendly) {
         container.innerHTML = '';
 
-        // Group identical units for cleaner display if they aren't exhausted?
-        // Actually, individual units allow for individual selection.
         units.forEach((unit, index) => {
             const card = document.createElement('div');
             card.className = `unit-card ${unit.exhausted ? 'exhausted' : ''}`;
             const imgUrl = this.unitImages[unit.type];
+
+            // Use the actual card image
             card.innerHTML = `
-                <div class="unit-name">${unit.name}</div>
-                <div class="unit-art" style="background-image: url('${imgUrl}')">
-                    ${!imgUrl ? (this.unitIcons[unit.type] || '❓') : ''}
-                </div>
-                <div class="stat-line">
-                    <span class="atk-val">${unit.atk}</span>
-                    <span class="blk-val">${unit.blk}</span>
-                    <span class="hp-val">${unit.hp}</span>
-                </div>
-                <div style="font-size: 0.6rem; opacity: 0.5; text-align: right;">#${index + 1}</div>
+                <div class="unit-art" style="background-image: url('${imgUrl}')"></div>
+                <div class="count-badge">#${index + 1}</div>
             `;
 
             const unitNumber = index + 1;
@@ -226,7 +259,6 @@ class PrismataWeb {
 
         this.elements.btnEnd.disabled = !isMyTurn;
         this.elements.btnBuy.disabled = !isMyTurn || phase === 'Defense';
-        this.elements.btnAttack.disabled = !isMyTurn || phase === 'Defense';
 
         if (phase === 'Defense') {
             this.elements.btnEnd.textContent = "FINISH BLOCKING";
@@ -240,27 +272,45 @@ class PrismataWeb {
     // -- Game Actions --
 
     async handleUnitClick(unit, unitNumber) {
+        // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
+        if (unit.atk > 0) {
+            this.pyodide.runPython(`
+                # Prepare this unit for attack
+                success, msg = engine.prepare_attackers([("${unit.type}", ${unitNumber})])
+                {"success": success, "msg": msg}
+            `);
+            this.syncState();
+            this.updateUI();
+            this.log(`${unit.name} #${unitNumber} prepared to attack!`, 'player1');
+            return;
+        }
+
+        // Resource generation units (miner, energizer, wall)
         if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
             const result = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
             this.processActionResult(result);
         } else if (unit.type === 'overcharger') {
             this.startTargeting(unit, unitNumber);
+        } else if (unit.type === 'volatile') {
+            // Detonate volatile
+            const result = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+            this.processActionResult(result);
         }
     }
 
     startTargeting(sourceUnit, sourceNumber) {
         this.targeting = { sourceUnit, sourceNumber };
-        document.getElementById('source-unit-name').textContent = `Overcharger #${sourceNumber}`;
-        document.getElementById('target-overlay').classList.remove('hidden');
+        this.log(`Click a friendly unit to overcharge with Overcharger #${sourceNumber}`, 'system');
 
-        // Change click behavior for targeting
-        const cards = document.querySelectorAll('.player .unit-card');
-        cards.forEach((card, idx) => {
-            const originalOnClick = card.onclick;
-            card.onclick = (e) => {
+        // Temporarily change all friendly cards to targeting mode
+        const friendlyCards = this.elements.p1Units.querySelectorAll('.unit-card');
+        friendlyCards.forEach((cardEl, idx) => {
+            const originalClass = cardEl.className;
+            cardEl.style.border = '2px solid yellow';
+            cardEl.onclick = (e) => {
                 e.stopPropagation();
                 this.executeTargetedAbility(idx + 1);
-                // Restore logic
+                // Restore cards
                 this.updateUI();
             };
         });
@@ -281,7 +331,6 @@ class PrismataWeb {
         `);
 
         this.targeting = null;
-        document.getElementById('target-overlay').classList.add('hidden');
         this.log(`Overcharged unit #${targetNumber}`, 'player1');
         this.syncState();
     }
@@ -431,15 +480,6 @@ class PrismataWeb {
     bindEvents() {
         this.elements.btnEnd.onclick = () => this.handleEndTurn();
         this.elements.btnBuy.onclick = () => this.handleBuy();
-        this.elements.btnAttack.onclick = () => {
-            // For simplicity, prepared "all" strikers and guards
-            this.pyodide.runPython(`
-                engine.prepare_attackers([("striker", "all"), ("guard", "all"), ("overcharger", "all")])
-             `);
-            this.syncState();
-            this.updateUI();
-            this.log("Attack prepared.", "player1");
-        };
 
         document.querySelector('.close-btn').onclick = () => this.hideShop();
 

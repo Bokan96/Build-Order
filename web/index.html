@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prismata Lite | Strategic Card Battle</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- Pyodide for running Python logic -->
     <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
 </head>
+
 <body class="dark-theme">
     <div id="loading-overlay">
         <div class="loader">
@@ -19,6 +23,68 @@
         </div>
     </div>
 
+    <!-- Welcome Screen -->
+    <div id="welcome-screen" class="menu-screen hidden">
+        <div class="menu-container glass">
+            <div class="game-title">
+                <h1>PRISMATA <span class="lite">LITE</span></h1>
+                <p class="tagline">Perfect Information • Zero RNG • Pure Strategy</p>
+            </div>
+            <div class="game-description">
+                <p>A tactical card battle game where timing and resource management determine victory.</p>
+                <p>Destroy your opponent's base by breaking through their defenses with carefully prepared attacks.</p>
+            </div>
+            <div class="menu-buttons">
+                <button id="btn-pvp" class="menu-btn disabled" disabled>
+                    PLAYER VS PLAYER
+                    <span class="coming-soon">Coming Soon</span>
+                </button>
+                <button id="btn-pve" class="menu-btn primary">
+                    PLAYER VS AI
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Selection Screen -->
+    <div id="ai-selection-screen" class="menu-screen hidden">
+        <div class="menu-container glass">
+            <div class="game-title">
+                <h2>SELECT YOUR OPPONENT</h2>
+                <p class="tagline">Choose an AI strategy to battle</p>
+            </div>
+            <div class="ai-grid">
+                <button class="ai-choice" data-ai="Aggressive">
+                    <div class="ai-icon">⚔️</div>
+                    <div class="ai-name">Aggressive</div>
+                    <div class="ai-desc">Rush strategy with early strikers</div>
+                </button>
+                <button class="ai-choice" data-ai="Guard">
+                    <div class="ai-icon">🛡️</div>
+                    <div class="ai-name">Guard</div>
+                    <div class="ai-desc">Balanced defense and economy</div>
+                </button>
+                <button class="ai-choice" data-ai="Wall">
+                    <div class="ai-icon">🧱</div>
+                    <div class="ai-name">Wall</div>
+                    <div class="ai-desc">Heavy structural defense</div>
+                </button>
+                <button class="ai-choice" data-ai="Reactive">
+                    <div class="ai-icon">🎯</div>
+                    <div class="ai-name">Reactive</div>
+                    <div class="ai-desc">Adapts to your strategy</div>
+                </button>
+                <button class="ai-choice" data-ai="Random">
+                    <div class="ai-icon">🎲</div>
+                    <div class="ai-name">Random</div>
+                    <div class="ai-desc">Unpredictable chaos</div>
+                </button>
+            </div>
+            <button id="btn-back-to-menu" class="menu-btn secondary">BACK</button>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
     <div id="app" class="hidden">
         <header class="game-header">
             <div class="header-content">
@@ -91,8 +157,6 @@
         <nav class="action-bar glass">
             <div class="action-group" id="primary-actions">
                 <button id="btn-buy" class="action-btn secondary">SHOP</button>
-                <div class="divider"></div>
-                <button id="btn-attack" class="action-btn primary">PREPARE ATTACK</button>
                 <button id="btn-end" class="action-btn accent">END TURN</button>
             </div>
         </nav>
@@ -109,13 +173,9 @@
                 </div>
             </div>
         </div>
-
-        <div id="target-overlay" class="target-overlay hidden">
-            <div class="target-prompt">Select a target for your <span id="source-unit-name"></span></div>
-            <button id="cancel-target" class="cancel-btn">Cancel</button>
-        </div>
     </div>
 
     <script type="module" src="app.js"></script>
 </body>
+
 </html>
