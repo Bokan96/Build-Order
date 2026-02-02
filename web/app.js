@@ -27,8 +27,11 @@ class PrismataWeb {
             btnEnd: document.getElementById('btn-end'),
             btnBuy: document.getElementById('btn-buy'),
             shopModal: document.getElementById('shop-modal'),
-            shopGrid: document.getElementById('shop-grid')
+            shopGrid: document.getElementById('shop-grid'),
+            unitPreview: document.getElementById('unit-preview')
         };
+
+        this.hoverTimeout = null;
 
         this.unitIcons = {
             'miner': '👷',
@@ -66,6 +69,10 @@ class PrismataWeb {
             this.isLoaded = true;
             this.hideLoading();
             this.showWelcomeScreen();
+
+            // Expose for console debugging
+            window.gameApp = this;
+            this.setupConsoleDebug();
 
         } catch (error) {
             console.error("Initialization failed:", error);
@@ -258,7 +265,21 @@ class PrismataWeb {
         document.getElementById(`${player}-hp`).textContent = data.hp;
         document.getElementById(`${player}-gold`).textContent = data.gold;
         document.getElementById(`${player}-energy`).textContent = data.energy;
-        document.getElementById(`${player}-atk`).textContent = data.atk;
+
+        let atkDisplay = data.atk;
+        if (this.state.phase === 'Assignment') {
+            const combat = this.state.combat;
+            const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
+
+            const pName = this.state.currentPlayer ? this.state.currentPlayer.toString() : "";
+            const isP1 = pName.includes("Player 1");
+            const isAttacker = (isP1 && player === 'p1') || (!isP1 && player === 'p2');
+
+            if (isAttacker) {
+                atkDisplay = `${remaining} / ${combat.atk}`;
+            }
+        }
+        document.getElementById(`${player}-atk`).textContent = atkDisplay;
     }
 
     renderUnits(container, units, isFriendly) {
@@ -285,19 +306,17 @@ class PrismataWeb {
             // Use the actual card image
             card.innerHTML = `
                 <div class="unit-art" style="background-image: url('${imgUrl}')"></div>
-                <div class="count-badge">#${unitNumber}</div>
                 ${isAttacking ? '<div class="combat-badge attacking">⚔️</div>' : ''}
                 ${isBlocking ? '<div class="combat-badge blocking">🛡️</div>' : ''}
             `;
 
+            // Hover Preview
+            card.onmouseenter = () => this.handleUnitMouseEnter(unit);
+            card.onmouseleave = () => this.handleUnitMouseLeave();
+
             // Interaction Handlers with Animation
             if (isFriendly && !isExhausted && this.state.phase === 'Action') {
-                card.onclick = async () => {
-                    // Trigger animation before processing
-                    card.classList.add('exhausting-animation');
-                    await new Promise(r => setTimeout(r, 400));
-                    this.handleUnitClick(unit, unitNumber);
-                };
+                card.onclick = () => this.handleUnitClick(unit, unitNumber, card);
             } else if (isFriendly && !isExhausted && this.state.phase === 'Defense' && unit.blk > 0 && !isBlocking) {
                 card.onclick = () => this.handleBlock(unit, unitNumber);
             } else if (!isFriendly && this.state.phase === 'Assignment' && unit.hp > 0) {
@@ -346,7 +365,7 @@ class PrismataWeb {
 
     // -- Game Actions --
 
-    async handleUnitClick(unit, unitNumber) {
+    async handleUnitClick(unit, unitNumber, cardElement) {
         // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
         if (unit.atk > 0 && unit.type !== 'overcharger') {
             // Prepare this specific unit for attack
@@ -387,6 +406,10 @@ class PrismataWeb {
             resultProxy.destroy();
 
             if (result.success) {
+                if (cardElement) {
+                    cardElement.classList.add('exhausting-animation');
+                    await new Promise(r => setTimeout(r, 400));
+                }
                 this.log(`${unit.name} #${unitNumber} prepared to attack!`, 'player1');
             } else {
                 this.log(`Error: ${result.msg}`, 'important');
@@ -398,14 +421,14 @@ class PrismataWeb {
 
         // Resource generation units (miner, energizer, wall)
         if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
-            const result = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-            this.processActionResult(result);
+            const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+            const success = await this.processActionResult(resultProxy, cardElement);
         } else if (unit.type === 'overcharger') {
-            this.startTargeting(unit, unitNumber);
+            this.startTargeting(unit, unitNumber, cardElement);
         } else if (unit.type === 'volatile') {
             // Detonate volatile
-            const result = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-            this.processActionResult(result);
+            const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+            await this.processActionResult(resultProxy, cardElement);
         }
     }
 
@@ -460,11 +483,18 @@ class PrismataWeb {
             # Attacker (Player 1) chooses where leftover damage goes
             # Determine how much HP is needed to kill this unit
             defender = game.player2
-            target_unit = defender.get_units_by_type(target_type)[target_num-1]
-            hp_needed = target_unit.current_health
+            units = defender.get_units_by_type(target_type)
             
-            # Try to resolve combat for this unit
-            success, msg = engine.resolve_combat([(target_type, hp_needed)])
+            if 1 <= target_num <= len(units):
+                target_unit = units[target_num-1]
+                hp_needed = target_unit.current_health
+                
+                # Try to resolve combat for this unit
+                success, msg = engine.resolve_combat([(target_type, hp_needed)])
+            else:
+                success = False
+                msg = f"Invalid unit number {target_num}"
+                
             {"success": success, "msg": msg}
         `);
         const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
@@ -595,11 +625,21 @@ class PrismataWeb {
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
                     await new Promise(resolve => setTimeout(resolve, 800));
 
-                    this.pyodide.runPython(`
+                    const defenseResultProxy = this.pyodide.runPython(`
                         # AI executes defense (blocking)
-                        ai.execute_turn(game, engine)
+                        summary = ai.execute_turn(game, engine)
                         engine.finish_defense()
+                        {"summary": summary, "phase": game.phase}
                     `);
+                    const defenseResult = defenseResultProxy.toJs({ dict_converter: Object.fromEntries });
+                    defenseResultProxy.destroy();
+
+                    if (defenseResult.summary && defenseResult.summary.length > 0) {
+                        this.log(`AI blocked with: ${defenseResult.summary.join(', ')}`, "opponent");
+                    } else {
+                        this.log("AI did not block.", "opponent");
+                    }
+
                     this.syncState();
 
                     // If it's now Assignment phase, P1 enters Assignment mode
@@ -708,15 +748,21 @@ class PrismataWeb {
         }
     }
 
-    processActionResult(proxy) {
+    async processActionResult(proxy, cardElement) {
         const result = proxy.toJs({ dict_converter: Object.fromEntries });
         proxy.destroy();
         if (result[0]) {
+            if (cardElement) {
+                cardElement.classList.add('exhausting-animation');
+                await new Promise(r => setTimeout(r, 400));
+            }
             this.log(result[1], 'player1');
             this.syncState();
             this.updateUI();
+            return true;
         } else {
             this.log(result[1], 'important');
+            return false;
         }
     }
 
@@ -886,6 +932,93 @@ class PrismataWeb {
 
     hideShop() {
         this.elements.shopModal.classList.add('hidden');
+    }
+
+    // -- Unit Preview --
+
+    handleUnitMouseEnter(unit) {
+        if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
+
+        this.hoverTimeout = setTimeout(() => {
+            this.updateUnitPreview(unit);
+            this.elements.unitPreview.classList.remove('hidden');
+        }, 1000);
+    }
+
+    handleUnitMouseLeave() {
+        if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
+        this.elements.unitPreview.classList.add('hidden');
+    }
+
+    updateUnitPreview(unit) {
+        const preview = this.elements.unitPreview;
+        const nameEl = preview.querySelector('.preview-name');
+        const artEl = preview.querySelector('.preview-art');
+        const statsEl = preview.querySelector('.preview-stats');
+        const descEl = preview.querySelector('.preview-desc');
+
+        nameEl.textContent = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
+        artEl.style.backgroundImage = `url('${this.unitImages[unit.type]}')`;
+
+        // Stats
+        statsEl.innerHTML = `
+            <span class="stat hp">❤️ ${unit.hp}</span>
+            <span class="stat atk">⚔️ ${unit.atk}</span>
+            <span class="stat blk">🛡️ ${unit.blk}</span>
+        `;
+
+        // Descriptions (Static for now, could be pulled from Python)
+        const descriptions = {
+            'miner': 'Generates 1 Gold every turn.',
+            'energizer': 'Generates 1 Energy every turn.',
+            'striker': 'Classic attacker. Needs 1 Energy to attack.',
+            'guard': 'Protector. Can block 1 damage or attack with 1.',
+            'wall': 'Heavy fortification. Blocks 2 damage but exhausts.',
+            'overcharger': 'Overcharges a unit to attack for +1.',
+            'volatile': 'Detonates to deal 3 damage, but is destroyed.',
+            'barrier': 'One-time shield. Blocks 1 damage then breaks.'
+        };
+        descEl.textContent = descriptions[unit.type] || 'A strategic unit.';
+    }
+
+    // -- Debugging --
+
+    setupConsoleDebug() {
+        console.log("%c BUILD ORDER DEBUG CONSOLE ", "background: #bd00ff; color: white; font-weight: bold; padding: 5px;");
+        console.log("Commands available:");
+        console.log(" - restartGame()");
+        console.log(" - addGold(n)");
+        console.log(" - addEnergy(n)");
+        console.log(" - addAttack(n)");
+
+        window.restartGame = () => {
+            console.log("Restarting game...");
+            this.setupGame();
+            this.syncState();
+            this.updateUI();
+            this.log("Game restarted manually.", "system");
+        };
+
+        window.addGold = (n) => {
+            this.pyodide.runPython(`game.player1.gold += ${n}`);
+            this.syncState();
+            this.updateUI();
+            console.log(`Added ${n} Gold.`);
+        };
+
+        window.addEnergy = (n) => {
+            this.pyodide.runPython(`game.player1.energy += ${n}`);
+            this.syncState();
+            this.updateUI();
+            console.log(`Added ${n} Energy.`);
+        };
+
+        window.addAttack = (n) => {
+            this.pyodide.runPython(`game.player1.displayed_attack += ${n}`);
+            this.syncState();
+            this.updateUI();
+            console.log(`Added ${n} Attack power (UI only, use properly for logic).`);
+        };
     }
 
     bindEvents() {

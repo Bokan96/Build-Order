@@ -140,9 +140,18 @@ body {
     border: 1px solid var(--glass-border);
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: flex-start;
+    /* Changed from space-between to allow top-align */
+    gap: 1rem;
     align-items: center;
     flex-shrink: 0;
+    overflow: hidden;
+    /* Hide content if it shrinks too much */
+    min-height: 0;
+}
+
+.player-stats-bar .glass {
+    min-height: 0;
 }
 
 .glass {
@@ -155,6 +164,8 @@ body {
     flex-direction: column;
     gap: 0.3rem;
     width: 100%;
+    flex-shrink: 0;
+    /* Always show name */
 }
 
 .player-identity .name {
@@ -167,12 +178,36 @@ body {
     text-overflow: ellipsis;
 }
 
+/* Hide resource row if stats bar gets too small */
+/* Use container query logic or media query if container queries not available broadly, but simple flex overflow handling works mostly */
 .resource-row {
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
     align-items: center;
     width: 100%;
+    /* If parent shrinks, this will overflow */
+    flex-shrink: 10;
+    /* Shrink this heavily first */
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Specific fix: If height is less than ~150px, hide resources */
+@media (max-height: 500px) {
+    /* This is viewport based, might not be enough if combat log expands. 
+      However, we can force the player-stats-bar to not shrink too much, or prioritize unit grid shrinking. 
+      But user asked to hide it if it doesn't fit.
+   */
+}
+
+/* Better approach: Let flexbox hide it? No, flex items overflow. */
+/* We can use a min-height on player-stats-bar but let it shrink? */
+
+.player-area {
+    /* ... */
+    overflow: hidden;
+    /* Ensure stats bar doesn't poke out */
 }
 
 .resource {
@@ -278,12 +313,14 @@ body {
     justify-content: center;
 }
 
+
 /* Card Styling - Poker Size (2.5:3.5 ratio) */
 .unit-card {
-    width: 100%;
     height: 100%;
-    /* Fill the slot */
-    /* aspect-ratio handled by slot */
+    /* Fill parent height */
+    width: auto;
+    /* Auto width to maintain aspect ratio */
+    aspect-ratio: 2.5 / 3.5;
     background: rgba(20, 22, 30, 0.95);
     border: 2px solid var(--glass-border);
     border-radius: var(--radius-md);
@@ -304,17 +341,11 @@ body {
 
 @keyframes rotate-out {
     0% {
-        transform: scale(1) rotate(0deg);
-    }
-
-    50% {
-        transform: scale(0.9) rotate(45deg);
-        opacity: 0.8;
+        transform: rotate(0deg);
     }
 
     100% {
-        transform: scale(0.5) rotate(90deg);
-        opacity: 0;
+        transform: rotate(90deg);
     }
 }
 
@@ -407,35 +438,61 @@ body {
     overflow: hidden;
 }
 
-.unit-card .unit-art img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+/* Unit Preview Overlay */
+.unit-preview {
+    position: fixed;
+    right: 30px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 250px;
+    padding: 1.5rem;
+    border-radius: var(--radius-lg);
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 0 40px rgba(0, 242, 255, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    z-index: 1000;
+    pointer-events: none;
+    transition: opacity 0.3s, transform 0.3s;
 }
 
-.unit-card .unit-art::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: transparent;
+.unit-preview.hidden {
+    opacity: 0;
+    transform: translateY(-50%) translateX(50px);
+}
+
+.preview-art {
+    width: 100%;
+    aspect-ratio: 2.5/3.5;
+    background-size: cover;
+    background-position: center;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+}
+
+.preview-name {
+    font-size: 1.5rem;
+    letter-spacing: 1px;
+    color: var(--accent-primary);
+}
+
+.preview-stats {
+    display: flex;
+    gap: 1rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.preview-desc {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    line-height: 1.4;
 }
 
 .unit-card .count-badge {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background: var(--accent-primary);
-    color: black;
-    font-size: 0.75rem;
-    min-width: 24px;
-    height: 24px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 900;
-    padding: 0 6px;
-    z-index: 10;
+    display: none;
+    /* Removed as requested */
 }
 
 .unit-card .stat-line {

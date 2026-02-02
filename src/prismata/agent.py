@@ -34,6 +34,9 @@ class Agent:
 
         if game.phase == "Defense":
             self.handle_defense(game, engine)
+            
+        if game.phase == "Assignment":
+            self.handle_assignment(game, engine)
         
         if game.phase == "Action":
             self.handle_action(game, engine)
@@ -97,6 +100,25 @@ class Agent:
             engine.resolve_combat(assignments)
         
         # Note: Phase transition is handled by the caller (main.py)
+
+    def handle_assignment(self, game, engine):
+        """Handle the Assignment phase (Attacker assigns damage)."""
+        # Calculate remaining unassigned damage
+        total_atk = sum(u.attack for u in engine.attacking_units)
+        total_blk = sum(u.block for u in engine.blocking_units)
+        remaining = max(0, total_atk - total_blk - engine.assigned_damage)
+        
+        if remaining > 0:
+            assignments = self.assign_damage(game, engine, remaining)
+            success, msg = engine.resolve_combat(assignments)
+            if success:
+                self.log(f"Assignment Phase: Resolved combat. {msg}")
+            else:
+                self.log(f"Assignment Phase: Failed to resolve combat. {msg}")
+        
+        # Done with assignment, move to Action
+        engine.end_phase()
+        engine.action_phase()
 
     def assign_damage(self, game, engine, amount):
         """AI logic to assign damage to the opponent's board."""

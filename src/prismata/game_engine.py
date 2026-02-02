@@ -18,8 +18,7 @@ class GameEngine:
         
     def start_phase(self):
         """Execute the Start Phase."""
-        # Start Phase resets resources but DOES NOT ready units yet
-        # (Units ready after Defense Phase)
+        # Start Phase resets resources. Units were redied at the end of the previous turn.
         player = self.game.current_player
         player.units_purchased = 0
         player.displayed_attack = 0
@@ -28,7 +27,7 @@ class GameEngine:
         # Do NOT reset other_player.displayed_attack here, as it might be needed for Defense phase
         self.game.other_player.reset_unit_damage()
 
-        msg = "Start Phase: Readied all units."
+        msg = "Start Phase: Resources reset."
         if self.game.pending_attackers:
             total_damage = sum(u.attack for u in self.game.pending_attackers)
             msg += f"\n[NOTICE] Incoming attack discovered: {total_damage} damage."

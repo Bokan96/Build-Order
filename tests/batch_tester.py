@@ -10,13 +10,15 @@ from prismata.game_state import GameState
 from prismata.game_engine import GameEngine
 from prismata.agent import Agent
 
-def simulate_game(strategy1_name, strategy2_name, game_id):
+def simulate_game(strategy1_name, strategy2_name, game_id, debug=False):
     game = GameState()
     game.setup_game()
     engine = GameEngine(game)
     
-    agent1 = Agent(strategy1_name, logger=open(os.devnull, "w"))
-    agent2 = Agent(strategy2_name, logger=open(os.devnull, "w"))
+    logger = sys.stdout if debug else open(os.devnull, "w")
+    
+    agent1 = Agent(strategy1_name, logger=logger)
+    agent2 = Agent(strategy2_name, logger=logger)
     
     turn_limit = 70 # Limit turns to 70 as requested
     current_turn = 0
@@ -27,16 +29,30 @@ def simulate_game(strategy1_name, strategy2_name, game_id):
         
         # 1. Start Phase
         engine.start_phase()
-        if game.phase == "Start":
+        
+        # 2. Defense Phase Logic
+        engine.defense_phase() # Checks for attackers
+        
+        if game.phase == "Defense":
+            active_agent.execute_turn(game, engine)
+            # After defense turn, we need to finish defense
+            # In agent.execute_turn, if breach happens, it handles resolution
+            result, msg = engine.finish_defense()
+            
+        # 3. Assignment Phase Logic
+        if game.phase == "Assignment":
+             active_agent.execute_turn(game, engine)
+        
+        # TRANSITION: If we were in Defense/Assignment, we might now be in Action or End
+        # If we were NOT in Defense (i.e. ActionDone), we need to manually start Action
+        if game.phase == "ActionDone" or game.phase == "Start":
             engine.action_phase()
-        
-        # AI Turn
-        active_agent.execute_turn(game, engine)
-        
-        # Advance if still in Action
+             
+        # 4. Action Phase Logic
         if game.phase == "Action":
-             engine.end_phase()
-             engine.end_turn()
+            active_agent.execute_turn(game, engine)
+            engine.end_phase()
+            engine.end_turn()
 
     player1_hp = game.player1.base_health
     player2_hp = game.player2.base_health
