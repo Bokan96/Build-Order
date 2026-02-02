@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prismata Lite | Strategic Card Battle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Pyodide for running Python logic -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+</head>
+<body class="dark-theme">
+    <div id="loading-overlay">
+        <div class="loader">
+            <div class="spinner"></div>
+            <p id="loading-text">Booting Game Engine...</p>
+        </div>
+    </div>
+
+    <div id="app" class="hidden">
+        <header class="game-header">
+            <div class="header-content">
+                <div class="game-logo">PRISMATA <span class="lite">LITE</span></div>
+                <div id="game-info" class="game-info">
+                    <div class="stat-badge turn">TURN <span id="turn-count">1</span></div>
+                    <div class="stat-badge phase"><span id="phase-name">START</span> PHASE</div>
+                </div>
+                <div id="current-player-banner" class="player-banner">
+                    <span id="player-name-display">PLAYER 1</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="game-board">
+            <!-- Opponent Side -->
+            <section id="opponent-area" class="player-area opponent">
+                <div class="player-stats-bar glass">
+                    <div class="player-identity">
+                        <span class="name" id="p2-name">AI OPPONENT</span>
+                        <div class="hp-bar-container">
+                            <div id="p2-hp-fill" class="hp-fill" style="width: 100%;"></div>
+                            <span class="hp-text"><span id="p2-hp">10</span>/10 HP</span>
+                        </div>
+                    </div>
+                    <div class="resource-row">
+                        <div class="resource gold"><span class="icon">💰</span> <span id="p2-gold">2</span></div>
+                        <div class="resource energy"><span class="icon">⚡</span> <span id="p2-energy">0</span></div>
+                        <div class="resource attack"><span class="icon">⚔️</span> <span id="p2-atk">0</span></div>
+                        <div class="resource block"><span class="icon">🛡️</span> <span id="p2-blk">0</span></div>
+                    </div>
+                </div>
+                <div id="p2-units" class="unit-grid">
+                    <!-- Units rendered here -->
+                </div>
+            </section>
+
+            <!-- Combat Buffer -->
+            <div id="combat-buffer" class="combat-buffer">
+                <div id="combat-log" class="combat-log glass">
+                    <div class="log-entries" id="log-entries">
+                        <div class="log-entry system">Welcome to Prismata Lite Web.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Player Side -->
+            <section id="player-area" class="player-area player">
+                <div id="p1-units" class="unit-grid">
+                    <!-- Units rendered here -->
+                </div>
+                <div class="player-stats-bar glass">
+                    <div class="player-identity">
+                        <span class="name" id="p1-name">PLAYER 1</span>
+                        <div class="hp-bar-container">
+                            <div id="p1-hp-fill" class="hp-fill" style="width: 100%;"></div>
+                            <span class="hp-text"><span id="p1-hp">10</span>/10 HP</span>
+                        </div>
+                    </div>
+                    <div class="resource-row">
+                        <div class="resource gold"><span class="icon">💰</span> <span id="p1-gold">2</span></div>
+                        <div class="resource energy"><span class="icon">⚡</span> <span id="p1-energy">0</span></div>
+                        <div class="resource attack"><span class="icon">⚔️</span> <span id="p1-atk">0</span></div>
+                        <div class="resource block"><span class="icon">🛡️</span> <span id="p1-blk">0</span></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <nav class="action-bar glass">
+            <div class="action-group" id="primary-actions">
+                <button id="btn-buy" class="action-btn secondary">SHOP</button>
+                <div class="divider"></div>
+                <button id="btn-attack" class="action-btn primary">PREPARE ATTACK</button>
+                <button id="btn-end" class="action-btn accent">END TURN</button>
+            </div>
+        </nav>
+
+        <!-- Modals -->
+        <div id="shop-modal" class="modal hidden">
+            <div class="modal-content glass">
+                <div class="modal-header">
+                    <h2>UNIT SHOP</h2>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <div id="shop-grid" class="shop-grid">
+                    <!-- Shop units here -->
+                </div>
+            </div>
+        </div>
+
+        <div id="target-overlay" class="target-overlay hidden">
+            <div class="target-prompt">Select a target for your <span id="source-unit-name"></span></div>
+            <button id="cancel-target" class="cancel-btn">Cancel</button>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -52,7 +52,7 @@ Can also attack for 1 damage (Costs 0 Energy).
     "wall": """
 WALL - Heavy Blocker
 Cost: 3 Gold
-Stats: 0 ATK / 2 BLK / 0 HP (Shield)
+Stats: 0 ATK / 2 BLK / 2 HP
 
 Structural defensive unit.
 Provides 2 block. (Must REPAIR for 1 Energy if used to block)
@@ -71,11 +71,11 @@ Ability: OVERCHARGE (Exhaust, costs 1 Energy)
 """,
     "volatile": """
 VOLATILE - Burst Damage
-Cost: 4 Gold + 2 Energy
+Cost: 4 Gold
 Stats: 3 ATK / 0 BLK / 2 HP
 
 Ability: DETONATE (Exhaust, costs 1 Energy)
-  - Destroy this unit to gain +3 Attack (total 6 ATK!)
+  - Destroy this unit to gain +5 Attack (total 8 ATK!)
   - Massive burst finisher
   - Usage: 'volatile 1' or 'v'
 """,
@@ -151,8 +151,8 @@ def show_unit_shop():
         ("Striker", "3G", "2/0/1", "Atk Cost: 1E"),
         ("Guard", "3G", "1/2/2", "Basic blocker/attacker"),
         ("Overcharger", "3G+1E", "1/1/3", "Ready another unit"),
-        ("Wall", "3G", "0/2/0", "Heavy blocker (repair: 1E)"),
-        ("Volatile", "4G+2E", "3/0/2", "Detonate: +3 ATK (6 total)"),
+        ("Wall", "3G", "0/2/2", "Heavy blocker (repair: 1E)"),
+        ("Volatile", "4G", "3/0/2", "Detonate: +5 ATK (8 total)"),
     ]
     
     print(f"\n{'Unit':<15} {'Cost':<12} {'ATK/BLK/HP':<12} {'Ability'}")

@@ -119,12 +119,12 @@ class Guard(Unit):
 class Wall(Unit):
     """
     Cost: 3 Gold
-    Stats: 0 ATK / 2 BLK / 0 HP
+    Stats: 0 ATK / 2 BLK / 2 HP
     Special: Enters play READY.
     """
     
     def __init__(self):
-        super().__init__("Wall", gold_cost=3, energy_cost=0, attack=0, block=2, health=0)
+        super().__init__("Wall", gold_cost=3, energy_cost=0, attack=0, block=2, health=2)
         self.exhausted = False # Walls enter play Ready
         
     def repair(self, player):
@@ -174,13 +174,13 @@ class Overcharger(Unit):
 
 class Volatile(Unit):
     """
-    Cost: 4 Gold + 2 Energy
+    Cost: 4 Gold
     Stats: 3 ATK / 0 BLK / 2 HP
     Ability: Detonate (Exhaust, 2 Energy) -> Destroy this unit, gain +3 Attack this turn
     """
     
     def __init__(self):
-        super().__init__("Volatile", gold_cost=4, energy_cost=2, attack=0, block=0, health=2)
+        super().__init__("Volatile", gold_cost=4, energy_cost=0, attack=0, block=0, health=2)
         self.detonated = False
         
     def detonate(self, player):

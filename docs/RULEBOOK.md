@@ -170,7 +170,7 @@ Basic defensive unit.
 ### 🧱 Wall
 
 **Cost:** 3 Gold  
-**Stats:** 0 ATK / 2 BLK / 0 HP (Limit 3 per player)
+**Stats:** 0 ATK / 2 BLK / 2 HP (Limit 3 per player)
 
 **Special:** Walls do NOT ready automatically at the start of your turn.
 If used to block, the Wall becomes exhausted. To use it again, you must **Repair** it during your Action Phase.
@@ -194,7 +194,7 @@ Allows double use of key units.
 
 ### 💥 Volatile
 
-**Cost:** 4 Gold + 2 Energy  
+**Cost:** 4 Gold  
 **Stats:** 0 ATK / 0 BLK / 2 HP
 
 **Ability — Detonate (Exhaust, 1 Energy):**  
