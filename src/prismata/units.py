@@ -80,7 +80,7 @@ class Energizer(Unit):
     """
     
     def __init__(self):
-        super().__init__("Energizer", gold_cost=2, energy_cost=0, attack=0, block=0, health=3)
+        super().__init__("Energizer", gold_cost=2, energy_cost=0, attack=0, block=0, health=2)
         
     def generate(self, player):
         """

@@ -5,6 +5,7 @@ class Agent:
         self.strategy_name = strategy_name
         self.logger = logger
         self.interactive = interactive
+        self.turn_actions = []
 
     def log(self, message, turn=None):
         turn_str = f" [Turn {turn}]" if turn else ""
@@ -86,9 +87,11 @@ class Agent:
         unblocked = max(0, total_atk - total_blk)
         
         if unblocked > 0:
-            if self.interactive and game.other_player.name == "Player 1":
+            # In the web version, if Player 1 is attacking the AI, 
+            # we want Player 1 to manually assign the breach damage.
+            if game.other_player.name == "Player 1":
                  self.log(f"Defense Phase: {unblocked} damage unblocked. Waiting for Player 1 to assign damage...")
-                 return # Return and let the human assign via command line
+                 return # Return and let the human assign via UI
             
             assignments = self.assign_damage(game, engine, unblocked)
             engine.resolve_combat(assignments)

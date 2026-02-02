@@ -139,7 +139,7 @@ Your main economic engine.
 ### 🔵 Energizer
 
 **Cost:** 2 Gold  
-**Stats:** 0 ATK / 0 BLK / 3 HP
+**Stats:** 0 ATK / 0 BLK / 2 HP
 
 **Ability — Generate (Exhaust):**  
 Gain **+1 Energy**

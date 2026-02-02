@@ -18,13 +18,14 @@ class GameEngine:
         
     def start_phase(self):
         """Execute the Start Phase."""
-        # Start Phase always readies units and resets resources
+        # Start Phase resets resources but DOES NOT ready units yet
+        # (Units ready after Defense Phase)
         player = self.game.current_player
-        player.ready_all_units()
         player.units_purchased = 0
         player.displayed_attack = 0
         player.displayed_block = 0
         player.reset_unit_damage()
+        # Do NOT reset other_player.displayed_attack here, as it might be needed for Defense phase
         self.game.other_player.reset_unit_damage()
 
         msg = "Start Phase: Readied all units."
@@ -47,6 +48,9 @@ class GameEngine:
             self.assigned_damage = 0 
             
             total_damage = sum(u.attack for u in self.attacking_units)
+            # Ensure the attacker's damage is displayed during our defense phase
+            self.game.other_player.displayed_attack = total_damage
+            
             ready_blockers = [u for u in player.units if not u.exhausted and u.block > 0]
             
             if ready_blockers:
@@ -55,8 +59,25 @@ class GameEngine:
                 return f"Defense Phase: INCOMING ATTACK! {total_damage} damage incoming.\n[NO READY BLOCKERS AVAILABLE]"
         
         # No attack to defend against
-        self.game.phase = "ActionDone" # Temporary state
-        return "No incoming attack. Proceeding to Resolve."
+        self.game.phase = "ActionDone" 
+        player.ready_all_units() # Ready immediately if no defense needed
+        return "No incoming attack. Proceeding to Action."
+
+    def finish_defense(self):
+        """End defense and check if assignment is needed."""
+        if self.game.phase != "Defense":
+            return False, "Not in Defense Phase"
+            
+        total_atk = sum(u.attack for u in self.attacking_units)
+        total_blk = sum(u.block for u in self.blocking_units)
+        
+        if total_atk > total_blk:
+            self.game.phase = "Assignment"
+            return True, "Breach! Assign damage to enemy units or base."
+        else:
+            self.end_phase()
+            self.action_phase()
+            return True, "Defense resolved. Moving to Action."
         
     def action_phase(self):
         """Enter the Action Phase."""
@@ -207,6 +228,8 @@ class GameEngine:
                 u = available_units[i]
                 if u.name == "Wall":
                     u.exhaust() # Walls exhaust when blocking in this Lite version
+                if u.fragile:
+                    u.take_damage(99) # Fragile units die after blocking
                 self.blocking_units.append(u)
                 added_count += 1
         
@@ -217,13 +240,9 @@ class GameEngine:
     def resolve_combat(self, damage_assignments):
         """
         Resolve combat with damage assignments.
-        damage_assignments is a list of (target_type, damage) tuples.
-        target_type can be "base" or a unit type.
-        For units, damage destroys as many as HP permits.
-        In Defense phase, current_player is defender, other_player is attacker.
         """
-        if self.game.phase != "Defense":
-            return False, "Can only resolve combat during Defense Phase"
+        if self.game.phase not in ["Defense", "Assignment"]:
+            return False, "Can only resolve combat during Defense or Assignment Phase"
             
         # Calculate total damage
         total_attack = sum(u.attack for u in self.attacking_units)
@@ -323,11 +342,14 @@ class GameEngine:
         # If we just finished Action, we keep them for the queue
         if not is_action_ending:
              self.attacking_units = []
+             # USER REQUEST: Ready units after defense phase
+             self.game.current_player.ready_all_units()
         
         # Reset display stats
         self.game.current_player.displayed_attack = 0
         self.game.current_player.displayed_block = 0
-        self.game.other_player.displayed_attack = 0
+        if not is_action_ending:
+            self.game.other_player.displayed_attack = 0
         self.game.other_player.displayed_block = 0
         
         results = []

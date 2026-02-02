@@ -11,6 +11,8 @@
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com;">
     <!-- Pyodide for running Python logic -->
     <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
 </head>
@@ -90,11 +92,9 @@
             <div class="header-content">
                 <div class="game-logo">PRISMATA <span class="lite">LITE</span></div>
                 <div id="game-info" class="game-info">
+                    <div class="stat-badge player"><span id="player-name-display">PLAYER 1</span></div>
                     <div class="stat-badge turn">TURN <span id="turn-count">1</span></div>
                     <div class="stat-badge phase"><span id="phase-name">START</span> PHASE</div>
-                </div>
-                <div id="current-player-banner" class="player-banner">
-                    <span id="player-name-display">PLAYER 1</span>
                 </div>
             </div>
         </header>
@@ -105,16 +105,12 @@
                 <div class="player-stats-bar glass">
                     <div class="player-identity">
                         <span class="name" id="p2-name">AI OPPONENT</span>
-                        <div class="hp-bar-container">
-                            <div id="p2-hp-fill" class="hp-fill" style="width: 100%;"></div>
-                            <span class="hp-text"><span id="p2-hp">10</span>/10 HP</span>
-                        </div>
                     </div>
                     <div class="resource-row">
+                        <div class="resource hp"><span class="icon">❤️</span> <span id="p2-hp">10</span></div>
                         <div class="resource gold"><span class="icon">💰</span> <span id="p2-gold">2</span></div>
                         <div class="resource energy"><span class="icon">⚡</span> <span id="p2-energy">0</span></div>
                         <div class="resource attack"><span class="icon">⚔️</span> <span id="p2-atk">0</span></div>
-                        <div class="resource block"><span class="icon">🛡️</span> <span id="p2-blk">0</span></div>
                     </div>
                 </div>
                 <div id="p2-units" class="unit-grid">
@@ -124,32 +120,29 @@
 
             <!-- Combat Buffer -->
             <div id="combat-buffer" class="combat-buffer">
-                <div id="combat-log" class="combat-log glass">
-                    <div class="log-entries" id="log-entries">
-                        <div class="log-entry system">Welcome to Prismata Lite Web.</div>
+                <div class="combat-log-wrapper">
+                    <div id="combat-log" class="combat-log glass collapsed">
+                        <!-- Entries -->
                     </div>
+                    <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
                 </div>
             </div>
 
             <!-- Player Side -->
             <section id="player-area" class="player-area player">
-                <div id="p1-units" class="unit-grid">
-                    <!-- Units rendered here -->
-                </div>
                 <div class="player-stats-bar glass">
                     <div class="player-identity">
                         <span class="name" id="p1-name">PLAYER 1</span>
-                        <div class="hp-bar-container">
-                            <div id="p1-hp-fill" class="hp-fill" style="width: 100%;"></div>
-                            <span class="hp-text"><span id="p1-hp">10</span>/10 HP</span>
-                        </div>
                     </div>
                     <div class="resource-row">
+                        <div class="resource hp"><span class="icon">❤️</span> <span id="p1-hp">10</span></div>
                         <div class="resource gold"><span class="icon">💰</span> <span id="p1-gold">2</span></div>
                         <div class="resource energy"><span class="icon">⚡</span> <span id="p1-energy">0</span></div>
                         <div class="resource attack"><span class="icon">⚔️</span> <span id="p1-atk">0</span></div>
-                        <div class="resource block"><span class="icon">🛡️</span> <span id="p1-blk">0</span></div>
                     </div>
+                </div>
+                <div id="p1-units" class="unit-grid">
+                    <!-- Units rendered here -->
                 </div>
             </section>
         </main>
