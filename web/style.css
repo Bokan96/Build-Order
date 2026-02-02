@@ -124,7 +124,10 @@ body {
     display: flex;
     flex-direction: row;
     gap: 1rem;
-    min-height: 0;
+    flex: 1;
+    /* Take up equal vertical space in the board */
+    min-height: 250px;
+    /* Ensure at least card-stack height */
     align-items: stretch;
 }
 
@@ -135,19 +138,17 @@ body {
 
 .player-stats-bar {
     width: 100px;
-    padding: 0.8rem;
+    padding: 1.2rem 0.8rem;
     border-radius: var(--radius-lg);
     border: 1px solid var(--glass-border);
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    /* Changed from space-between to allow top-align */
-    gap: 1rem;
+    gap: 1.5rem;
     align-items: center;
     flex-shrink: 0;
     overflow: hidden;
-    /* Hide content if it shrinks too much */
-    min-height: 0;
+    min-height: 400px;
 }
 
 .player-stats-bar .glass {
@@ -183,14 +184,14 @@ body {
 .resource-row {
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
+    gap: 1rem;
     align-items: center;
     width: 100%;
-    /* If parent shrinks, this will overflow */
-    flex-shrink: 10;
-    /* Shrink this heavily first */
+    flex: 1;
+    /* Take up remaining space */
+    justify-content: center;
+    /* Center horizontally/vertically as a group */
     min-height: 0;
-    overflow: hidden;
 }
 
 /* Specific fix: If height is less than ~150px, hide resources */
@@ -245,37 +246,40 @@ body {
     color: #887fff;
 }
 
-/* Unit Grid - 5 units horizontally */
+/* Unit Grid - Column-based layout */
 .unit-grid {
     flex: 1;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    /* Auto-fill with min width */
-    grid-auto-rows: min-content;
-    gap: 0.5rem;
-    padding: 1rem;
-    padding-bottom: 2rem;
-    min-height: 200px;
-    /* Ensure empty grid has height */
-    overflow-y: auto;
-    align-content: flex-start;
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    padding: 1.5rem;
+    height: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    /* Important for solitaire stack overlap */
+    align-items: flex-start;
 }
 
-/* Card Slot (Square container) */
-.unit-slot {
-    aspect-ratio: 1 / 1;
+/* Unit Column - Each column holds units of one type */
+.unit-column {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    min-width: 120px;
+    position: relative;
+    flex-shrink: 0;
+    /* Don't squash columns */
 }
+
 
 /* Card Styling - Poker Size (2.5:3.5 ratio) */
 .unit-card {
-    height: 95%;
-    /* Fit inside square slot based on height */
-    width: auto;
-    aspect-ratio: 2.5 / 3.5;
-    background: rgba(20, 22, 30, 0.95);
+    width: 110px;
+    height: 154px;
+    flex: 0 0 110px;
+    /* Don't grow, don't shrink, stay 110px */
+    background: #1a1d2e;
     border: 2px solid var(--glass-border);
     border-radius: var(--radius-md);
     position: relative;
@@ -286,19 +290,38 @@ body {
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     overflow: hidden;
     z-index: 1;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Cards within column stack with overlap */
+.unit-column .unit-card {
+    margin-top: -80px;
+    /* Overlap cards like solitaire */
+}
+
+.unit-column .unit-card:first-child {
+    margin-top: 0;
+    /* First card has no overlap */
 }
 
 .unit-card:hover {
-    transform: translateY(-8px) scale(1.05);
+    transform: translateY(-20px) scale(1.05);
     border-color: var(--accent-primary);
     box-shadow: 0 10px 30px rgba(0, 242, 255, 0.3);
-    z-index: 10;
+    z-index: 100;
 }
 
 .unit-card.exhausted {
     transform: rotate(90deg);
-    opacity: 0.6;
-    filter: grayscale(0.5);
+    opacity: 1;
+    /* Fully opaque as requested */
+    filter: grayscale(1) brightness(0.7);
+    /* Greyed out but solid */
+}
+
+.unit-card.interactive {
+    box-shadow: 0 0 10px var(--accent-green);
+    border-color: var(--accent-green);
 }
 
 .unit-card.exhausted:hover {
@@ -519,56 +542,43 @@ body {
     color: #887fff;
 }
 
-/* Combat Log */
-.combat-buffer {
-    display: flex;
-    justify-content: center;
-    padding: 0 2rem;
-}
-
-/* Combat Log Wrapper */
-.combat-log-wrapper {
-    width: 100%;
-    max-width: 800px;
+/* Combat Log in Action Bar */
+.combat-log-container {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    position: relative;
+    margin-right: auto;
+    /* Push to left side or keep flexible */
+    max-width: 400px;
+    position: absolute;
+    left: 2rem;
+    bottom: 1.5rem;
 }
 
 .combat-log {
-    flex: 1;
-    height: 60px;
-    /* Shows approx 3 lines */
-    padding: 0.5rem 0.8rem;
-    border-radius: var(--radius-md);
+    width: 300px;
+    height: 48px;
+    /* Minimal height (~2 lines) */
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--glass-border);
     overflow-y: hidden;
-    /* Hidden by default */
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    transition: height 0.3s ease;
-    background: rgba(0, 0, 0, 0.8);
+    font-size: 0.8rem;
+    background: rgba(0, 0, 0, 0.6);
+    transition: height 0.2s, width 0.2s;
 }
 
 .combat-log.expanded {
-    height: 200px;
+    height: 300px;
+    width: 400px;
     overflow-y: auto;
-}
-
-.log-toggle-btn {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    border: 1px solid var(--glass-border);
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-dim);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    transition: all 0.2s;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    background: rgba(10, 11, 16, 0.95);
+    z-index: 1000;
+    border: 1px solid var(--accent-primary);
 }
 
 .log-toggle-btn:hover {
@@ -601,6 +611,8 @@ body {
     border-top: 1px solid var(--glass-border);
     display: flex;
     justify-content: center;
+    position: relative;
+    /* Anchor for combat log */
 }
 
 .action-btn {

@@ -104,7 +104,7 @@
             <section id="opponent-area" class="player-area opponent">
                 <div class="player-stats-bar glass">
                     <div class="player-identity">
-                        <span class="name" id="p2-name">AI OPPONENT</span>
+                        <span class="name" id="p2-name">AI</span>
                     </div>
                     <div class="resource-row">
                         <div class="resource hp"><span class="icon">❤️</span> <span id="p2-hp">10</span></div>
@@ -118,15 +118,7 @@
                 </div>
             </section>
 
-            <!-- Combat Buffer -->
-            <div id="combat-buffer" class="combat-buffer">
-                <div class="combat-log-wrapper">
-                    <div id="combat-log" class="combat-log glass collapsed">
-                        <!-- Entries -->
-                    </div>
-                    <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
-                </div>
-            </div>
+
 
             <!-- Player Side -->
             <section id="player-area" class="player-area player">
@@ -148,6 +140,12 @@
         </main>
 
         <nav class="action-bar glass">
+            <div class="combat-log-container">
+                <div id="combat-log" class="combat-log collapsed">
+                    <!-- Entries -->
+                </div>
+                <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
+            </div>
             <div class="action-group" id="primary-actions">
                 <button id="btn-buy" class="action-btn secondary">SHOP</button>
                 <button id="btn-end" class="action-btn accent">END TURN</button>

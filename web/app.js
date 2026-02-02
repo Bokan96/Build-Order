@@ -271,9 +271,8 @@ class PrismataWeb {
             const combat = this.state.combat;
             const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
 
-            const pName = this.state.currentPlayer ? this.state.currentPlayer.toString() : "";
-            const isP1 = pName.includes("Player 1");
-            const isAttacker = (isP1 && player === 'p1') || (!isP1 && player === 'p2');
+            const isP1Attacking = this.state.p1.units.some(u => u.attacking);
+            const isAttacker = (isP1Attacking && player === 'p1') || (!isP1Attacking && player === 'p2');
 
             if (isAttacker) {
                 atkDisplay = `${remaining} / ${combat.atk}`;
@@ -285,47 +284,78 @@ class PrismataWeb {
     renderUnits(container, units, isFriendly) {
         container.innerHTML = '';
 
-        units.forEach((unit, index) => {
-            const slot = document.createElement('div');
-            slot.className = 'unit-slot';
+        // Group units by type
+        const unitsByType = {};
+        const typeOrder = ['miner', 'energizer', 'striker', 'guard', 'wall', 'overcharger', 'volatile', 'barrier'];
 
-            const card = document.createElement('div');
-            const isAttacking = unit.attacking;
-            const isBlocking = unit.blocking;
-            const isExhausted = unit.exhausted;
-
-            // Calculate the unit number within its type
-            const unitsOfSameType = units.filter((u, i) => i <= index && u.type === unit.type);
-            const unitNumber = unitsOfSameType.length;
-
+        units.forEach(unit => {
             if (!unit.isAlive) return;
+            if (!unitsByType[unit.type]) {
+                unitsByType[unit.type] = [];
+            }
+            unitsByType[unit.type].push(unit);
+        });
 
-            card.className = `unit-card ${isExhausted ? 'exhausted' : ''} ${isAttacking ? 'attacking' : ''} ${isBlocking ? 'blocking' : ''}`;
-            const imgUrl = this.unitImages[unit.type];
+        // Create columns for each unit type
+        typeOrder.forEach(type => {
+            if (!unitsByType[type] || unitsByType[type].length === 0) return;
 
-            // Use the actual card image
-            card.innerHTML = `
-                <div class="unit-art" style="background-image: url('${imgUrl}')"></div>
-                ${isAttacking ? '<div class="combat-badge attacking">⚔️</div>' : ''}
-                ${isBlocking ? '<div class="combat-badge blocking">🛡️</div>' : ''}
-            `;
+            const column = document.createElement('div');
+            column.className = 'unit-column';
 
-            // Hover Preview
-            card.onmouseenter = () => this.handleUnitMouseEnter(unit);
-            card.onmouseleave = () => this.handleUnitMouseLeave();
-
-            // Interaction Handlers with Animation
-            if (isFriendly && !isExhausted && this.state.phase === 'Action') {
-                card.onclick = () => this.handleUnitClick(unit, unitNumber, card);
-            } else if (isFriendly && !isExhausted && this.state.phase === 'Defense' && unit.blk > 0 && !isBlocking) {
-                card.onclick = () => this.handleBlock(unit, unitNumber);
-            } else if (!isFriendly && this.state.phase === 'Assignment' && unit.hp > 0) {
-                // If it's the player's turn to assign damage to AI
-                card.onclick = () => this.handleAssignDamage(unit, unitNumber);
+            // Find the index of the bottom-most unused unit
+            let interactiveIndex = -1;
+            for (let i = unitsByType[type].length - 1; i >= 0; i--) {
+                const u = unitsByType[type][i];
+                if (!u.exhausted || !isFriendly) {
+                    interactiveIndex = i;
+                    break;
+                }
             }
 
-            slot.appendChild(card);
-            container.appendChild(slot);
+            unitsByType[type].forEach((unit, indexInType) => {
+                const card = document.createElement('div');
+                const isAttacking = unit.attacking;
+                const isBlocking = unit.blocking;
+                const isExhausted = unit.exhausted;
+                const unitNumber = indexInType + 1;
+
+                card.className = `unit-card ${isExhausted ? 'exhausted' : ''} ${isAttacking ? 'attacking' : ''} ${isBlocking ? 'blocking' : ''}`;
+                const imgUrl = this.unitImages[unit.type];
+
+                card.innerHTML = `
+                        <div class="unit-art" style="background-image: url('${imgUrl}')"></div>
+                        ${isAttacking ? '<div class="combat-badge attacking">⚔️</div>' : ''}
+                        ${isBlocking ? '<div class="combat-badge blocking">🛡️</div>' : ''}
+                    `;
+
+                // Hover Preview
+                card.onmouseenter = () => this.handleUnitMouseEnter(unit);
+                card.onmouseleave = () => this.handleUnitMouseLeave();
+
+                // Interaction Handlers (Only for the bottom-most unused unit)
+                const isInteractive = indexInType === interactiveIndex;
+
+                if (isInteractive) {
+                    if (isFriendly && !isExhausted && this.state.phase === 'Action') {
+                        card.onclick = () => this.handleUnitClick(unit, unitNumber, card);
+                    } else if (isFriendly && !isExhausted && this.state.phase === 'Defense' && unit.blk > 0 && !isBlocking) {
+                        card.onclick = () => this.handleBlock(unit, unitNumber);
+                    } else if (!isFriendly && this.state.phase === 'Assignment' && unit.hp > 0) {
+                        // If it's the player's turn to assign damage to AI
+                        card.onclick = () => this.handleAssignDamage(unit, unitNumber);
+                    }
+
+                    // Add a visual cue that this card is interactive
+                    if ((isFriendly && !isExhausted) || (!isFriendly && this.state.phase === 'Assignment')) {
+                        card.classList.add('interactive');
+                    }
+                }
+
+                column.appendChild(card);
+            });
+
+            container.appendChild(column);
         });
     }
 
@@ -355,7 +385,7 @@ class PrismataWeb {
         } else if (phase === 'Assignment') {
             const combat = this.state.combat;
             const remaining = Math.max(0, (combat.atk - combat.blk) - combat.assigned);
-            this.elements.btnEnd.textContent = `FINISH BREACH (${remaining})`;
+            this.elements.btnEnd.textContent = `ATTACK BASE (${remaining})`;
             this.elements.btnEnd.classList.add('important');
         } else {
             this.elements.btnEnd.textContent = "END TURN";
