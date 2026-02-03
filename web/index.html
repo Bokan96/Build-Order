@@ -95,6 +95,7 @@
                     <div class="stat-badge player"><span id="player-name-display">PLAYER 1</span></div>
                     <div class="stat-badge turn">TURN <span id="turn-count">1</span></div>
                     <div class="stat-badge phase"><span id="phase-name">START</span> PHASE</div>
+                    <button id="btn-settings" class="icon-btn settings-btn" title="Settings">⚙️</button>
                 </div>
             </div>
         </header>
@@ -107,10 +108,16 @@
                         <span class="name" id="p2-name">AI</span>
                     </div>
                     <div class="resource-row">
-                        <div class="resource hp"><span class="icon">❤️</span> <span id="p2-hp">10</span></div>
-                        <div class="resource gold"><span class="icon">💰</span> <span id="p2-gold">2</span></div>
-                        <div class="resource energy"><span class="icon">⚡</span> <span id="p2-energy">0</span></div>
-                        <div class="resource attack"><span class="icon">⚔️</span> <span id="p2-atk">0</span></div>
+                        <div class="resource hp" title="Health: If this reaches 0, you lose the game."><span
+                                class="icon">❤️</span> <span id="p2-hp">10</span></div>
+                        <div class="resource gold" title="Gold: Used to buy new units from the Shop."><span
+                                class="icon">💰</span> <span id="p2-gold">2</span></div>
+                        <div class="resource energy"
+                            title="Energy: Used to activate unit abilities and prepare attacks."><span
+                                class="icon">⚡</span> <span id="p2-energy">0</span></div>
+                        <div class="resource attack" title="Attack: Damage prepared to hit the opponent next turn.">
+                            <span class="icon">⚔️</span> <span id="p2-atk">0</span>
+                        </div>
                     </div>
                 </div>
                 <div id="p2-units" class="unit-grid">
@@ -118,7 +125,7 @@
                 </div>
             </section>
 
-
+            <div class="player-separator"></div>
 
             <!-- Player Side -->
             <section id="player-area" class="player-area player">
@@ -127,10 +134,16 @@
                         <span class="name" id="p1-name">PLAYER 1</span>
                     </div>
                     <div class="resource-row">
-                        <div class="resource hp"><span class="icon">❤️</span> <span id="p1-hp">10</span></div>
-                        <div class="resource gold"><span class="icon">💰</span> <span id="p1-gold">2</span></div>
-                        <div class="resource energy"><span class="icon">⚡</span> <span id="p1-energy">0</span></div>
-                        <div class="resource attack"><span class="icon">⚔️</span> <span id="p1-atk">0</span></div>
+                        <div class="resource attack" title="Attack: Damage prepared to hit the opponent next turn.">
+                            <span class="icon">⚔️</span> <span id="p1-atk">0</span>
+                        </div>
+                        <div class="resource energy"
+                            title="Energy: Used to activate unit abilities and prepare attacks."><span
+                                class="icon">⚡</span> <span id="p1-energy">0</span></div>
+                        <div class="resource gold" title="Gold: Used to buy new units from the Shop."><span
+                                class="icon">💰</span> <span id="p1-gold">2</span></div>
+                        <div class="resource hp" title="Health: If this reaches 0, you lose the game."><span
+                                class="icon">❤️</span> <span id="p1-hp">10</span></div>
                     </div>
                 </div>
                 <div id="p1-units" class="unit-grid">
@@ -140,15 +153,17 @@
         </main>
 
         <nav class="action-bar glass">
-            <div class="combat-log-container">
-                <div id="combat-log" class="combat-log collapsed">
-                    <!-- Entries -->
-                </div>
-                <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
-            </div>
             <div class="action-group" id="primary-actions">
-                <button id="btn-buy" class="action-btn secondary">SHOP</button>
-                <button id="btn-end" class="action-btn accent">END TURN</button>
+                <div class="combat-log-container">
+                    <div id="combat-log" class="combat-log collapsed">
+                        <!-- Entries -->
+                    </div>
+                    <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
+                </div>
+                <div class="main-buttons">
+                    <button id="btn-buy" class="action-btn secondary">SHOP</button>
+                    <button id="btn-end" class="action-btn accent">END TURN</button>
+                </div>
             </div>
         </nav>
 
@@ -161,6 +176,28 @@
                 </div>
                 <div id="shop-grid" class="shop-grid">
                     <!-- Shop units here -->
+                </div>
+            </div>
+        </div>
+
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content glass settings-content">
+                <div class="modal-header">
+                    <h2>SETTINGS</h2>
+                    <button class="close-btn" id="close-settings">&times;</button>
+                </div>
+                <div class="settings-body">
+                    <div class="setting-item">
+                        <label>Music Volume</label>
+                        <input type="range" id="volume-music" min="0" max="100" value="0" step="10">
+                    </div>
+                    <div class="setting-item">
+                        <label>SFX Volume</label>
+                        <input type="range" id="volume-sfx" min="0" max="100" value="50" step="10">
+                    </div>
+                    <div class="settings-actions">
+                        <button id="btn-restart-game" class="menu-btn danger">RESTART GAME</button>
+                    </div>
                 </div>
             </div>
         </div>
