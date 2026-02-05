@@ -324,27 +324,35 @@ class PrismataWeb {
             const column = document.createElement('div');
             column.className = 'unit-column';
 
-            // Find the index of the bottom-most unused unit
+            // interactiveIndex: The card that glows and handles clicks (bottom-most/front-most)
             let interactiveIndex = -1;
             for (let i = unitsByType[type].length - 1; i >= 0; i--) {
                 const u = unitsByType[type][i];
-                // In Assignment phase (enemy units), any alive unit is clickable
-                // In Action/Defense phase (friendly units), only non-exhausted units (or walls for repair)
                 const isAssignmentPhase = !isFriendly && this.state.phase === 'Assignment';
                 if (isAssignmentPhase) {
-                    // Assignment: any alive unit
                     if (u.hp > 0) {
                         interactiveIndex = i;
                         break;
                     }
                 } else {
-                    // Action/Defense: non-exhausted units (or walls)
                     if (!u.exhausted || (isFriendly && u.type === 'wall')) {
                         interactiveIndex = i;
                         break;
                     }
                 }
             }
+
+            // rotationIndex: The card that visually rotates/exhausts (top-most)
+            let rotationIndex = -1;
+            for (let i = 0; i < unitsByType[type].length; i++) {
+                const u = unitsByType[type][i];
+                if (!u.exhausted || (isFriendly && u.type === 'wall')) {
+                    rotationIndex = i;
+                    break;
+                }
+            }
+
+            console.log(`Type: ${type}, RotationIndex: ${rotationIndex}, InteractiveIndex: ${interactiveIndex}`);
 
             column.onmouseenter = () => {
                 const interactiveCard = column.querySelector('.unit-card.interactive');
@@ -358,7 +366,6 @@ class PrismataWeb {
             };
 
             const interactiveUnit = interactiveIndex !== -1 ? unitsByType[type][interactiveIndex] : null;
-            const interactiveUnitNumber = interactiveIndex + 1;
 
             unitsByType[type].forEach((unit, indexInType) => {
                 const card = document.createElement('div');
@@ -376,7 +383,7 @@ class PrismataWeb {
                         ${isBlocking ? '<div class="combat-badge blocking">🛡️</div>' : ''}
                     `;
 
-                // Hover Preview - only for preview popup, not for interaction
+                // Hover Preview - available for all cards
                 card.addEventListener('mouseenter', (e) => {
                     e.stopPropagation();
                     this.handleUnitMouseEnter(unit);
@@ -386,7 +393,7 @@ class PrismataWeb {
                     this.handleUnitMouseLeave();
                 }, { passive: true });
 
-                // Only the active card gets the 'interactive' class for the sub-glow
+                // Interactive Glow (Bottom Card)
                 if (indexInType === interactiveIndex) {
                     const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall');
                     const canBlockInDefense = isFriendly && !isExhausted && this.state.phase === 'Defense' && unit.blk > 0 && !isBlocking;
@@ -397,8 +404,16 @@ class PrismataWeb {
                     }
                 }
 
+                // Mark for rotation animation (Top Card)
+                if (indexInType === rotationIndex) {
+                    card.classList.add('rotation-target');
+                }
+
                 column.appendChild(card);
             });
+
+            const interactiveUnitNum = interactiveIndex + 1;
+            const rotationUnitNum = rotationIndex + 1;
 
             // Set column level interaction
             if (interactiveUnit) {
@@ -407,13 +422,13 @@ class PrismataWeb {
                 const isInteractiveAssignment = !isFriendly && this.state.phase === 'Assignment' && interactiveUnit.hp > 0;
 
                 if (isInteractiveAction) {
-                    column.onclick = () => this.handleUnitClick(interactiveUnit, interactiveUnitNumber, column.querySelector('.unit-card.interactive'));
+                    column.onclick = () => this.handleUnitClick(interactiveUnit, rotationUnitNum, column);
                     column.style.cursor = 'pointer';
                 } else if (isInteractiveDefense) {
-                    column.onclick = () => this.handleBlock(interactiveUnit, interactiveUnitNumber);
+                    column.onclick = () => this.handleBlock(interactiveUnit, rotationUnitNum);
                     column.style.cursor = 'pointer';
                 } else if (isInteractiveAssignment) {
-                    column.onclick = () => this.handleAssignDamage(interactiveUnit, interactiveUnitNumber);
+                    column.onclick = () => this.handleAssignDamage(interactiveUnit, interactiveUnitNum);
                     column.style.cursor = 'pointer';
                 }
             }
@@ -458,7 +473,22 @@ class PrismataWeb {
 
     // -- Game Actions --
 
-    async handleUnitClick(unit, unitNumber, cardElement) {
+    async handleUnitClick(unit, unitNumber, columnElement) {
+        if (this.targeting) {
+            this.handleTargeting(unit, unitNumber);
+            return;
+        }
+
+        // Action context
+        const isFriendly = true; // Board rendering sets this
+        const canAct = this.state.phase === 'Action' && isFriendly;
+        if (!canAct) return;
+
+        // Find the card to animate (the rotation-target)
+        let animateCard = null;
+        if (columnElement) {
+            animateCard = columnElement.querySelector('.unit-card.rotation-target') || columnElement.querySelector('.unit-card.interactive');
+        }
         // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
         if (unit.atk > 0 && unit.type !== 'overcharger') {
             // Prepare this specific unit for attack
@@ -499,12 +529,14 @@ class PrismataWeb {
             resultProxy.destroy();
 
             if (result.success) {
-                this.sounds.play('PREPARE_ATTACK');
-                if (cardElement) {
-                    cardElement.classList.add('exhausting-animation');
-                    await new Promise(r => setTimeout(r, 400));
+                if (animateCard) {
+                    animateCard.classList.add('exhausting-animation');
                 }
+                this.sounds.play('PREPARE_ATTACK');
                 this.log(`${unit.name} #${unitNumber} prepared to attack!`, 'player1');
+
+                // Brief delay for animation
+                await new Promise(r => setTimeout(r, 200));
             } else {
                 this.log(`Error: ${result.msg}`, 'important');
             }
@@ -516,13 +548,13 @@ class PrismataWeb {
         // Resource generation units (miner, energizer, wall)
         if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
             const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-            const success = await this.processActionResult(resultProxy, cardElement);
+            await this.processActionResult(resultProxy, animateCard);
         } else if (unit.type === 'overcharger') {
-            this.startTargeting(unit, unitNumber, cardElement);
+            this.startTargeting(unit, unitNumber, animateCard);
         } else if (unit.type === 'volatile') {
             // Detonate volatile
             const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-            await this.processActionResult(resultProxy, cardElement);
+            await this.processActionResult(resultProxy, animateCard);
         }
     }
 
@@ -853,10 +885,13 @@ class PrismataWeb {
         if (result[0]) {
             if (cardElement) {
                 cardElement.classList.add('exhausting-animation');
-                await new Promise(r => setTimeout(r, 400));
             }
-            this.log(result[1], 'player1');
             this.sounds.play('ABILITY');
+            this.log(result[1], 'player1');
+
+            // Delay for animation
+            await new Promise(r => setTimeout(r, 200));
+
             this.syncState();
             this.updateUI();
             return true;

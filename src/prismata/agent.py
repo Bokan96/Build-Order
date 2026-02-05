@@ -67,8 +67,22 @@ class Agent:
         
         # Simple defense: check for blockers
         available_blockers = [u for u in defender.units if not u.exhausted and u.block > 0]
-        # Sort blockers: non-economic first (Wall, Guard, Barrier, Striker, etc.)
-        available_blockers.sort(key=lambda u: 1 if u.name in ["Miner", "Energizer"] else 0)
+        # Sort blockers by priority:
+        # 1. Guards/Strikers (best blockers, no drawbacks)
+        # 2. Economic units (Miner, Energizer - preserve if possible but use if needed)
+        # 3. Walls (cost energy to repair)
+        # 4. Barriers (destroyed on block - last resort)
+        def blocker_priority(unit):
+            if unit.name == "Barrier":
+                return 4  # Last resort - destroyed on block
+            elif unit.name == "Wall":
+                return 3  # Avoid - costs energy to repair
+            elif unit.name in ["Miner", "Energizer"]:
+                return 2  # Preserve economic units
+            else:
+                return 1  # Guards, Strikers, etc. - use first
+        
+        available_blockers.sort(key=blocker_priority)
         
         blocked_units = {}
         for u in available_blockers:
@@ -144,9 +158,10 @@ class Agent:
         # 2. Kill Strikers (Threat removal)
         # 3. Kill resource generators (Miner, Energizer)
         # 4. Hit the base with leftovers
-        targets = ["wall", "striker", "miner", "energizer", "volatile", "overcharger", "guard", "barrier"]
+        targets = ["wall", "striker", "miner", "energizer", "volatile", "repeater", "overcharger", "guard", "barrier"]
         for t in targets:
-            units = [u for u in defender.units if u.name == t and u.current_health > 0 and u.is_alive()]
+            # Match using lowercase name to avoid case sensitivity issues
+            units = [u for u in defender.units if u.name.lower() == t and u.current_health > 0 and u.is_alive()]
             for u in units:
                 if remaining >= u.current_health:
                     assignments.append((t.lower(), u.current_health))
