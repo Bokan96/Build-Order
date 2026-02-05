@@ -37,9 +37,8 @@
                 <p>Destroy your opponent's base by breaking through their defenses with carefully prepared attacks.</p>
             </div>
             <div class="menu-buttons">
-                <button id="btn-pvp" class="menu-btn disabled" disabled>
-                    PLAYER VS PLAYER
-                    <span class="coming-soon">Coming Soon</span>
+                <button id="btn-pvp" class="menu-btn secondary">
+                    HOTSEAT PVP
                 </button>
                 <button id="btn-pve" class="menu-btn primary">
                     PLAYER VS AI
@@ -155,8 +154,10 @@
         <nav class="action-bar glass">
             <div class="action-group" id="primary-actions">
                 <div class="combat-log-container">
-                    <div id="combat-log" class="combat-log collapsed">
-                        <!-- Entries -->
+                    <div class="combat-log-wrapper">
+                        <div id="combat-log" class="combat-log collapsed">
+                            <!-- Entries -->
+                        </div>
                     </div>
                     <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
                 </div>

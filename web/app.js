@@ -11,6 +11,7 @@ class PrismataWeb {
         this.aiAgent = null;
         this.isLoaded = false;
         this.selectedAI = null;
+        this.gameMode = 'AI'; // 'AI' or 'HOTSEAT'
         this.processingTurn = false;
 
         // UI Elements
@@ -21,8 +22,9 @@ class PrismataWeb {
             app: document.getElementById('app'),
             p1Units: document.getElementById('p1-units'),
             p2Units: document.getElementById('p2-units'),
-            logEntries: document.getElementById('combat-log'), /* Wrapper now is combat-log */
-            combatLogWrapper: document.getElementById('combat-log'), /* Container for expanding */
+            logEntries: document.getElementById('combat-log'),
+            combatLogWrapper: document.querySelector('.combat-log-wrapper'),
+            combatLog: document.getElementById('combat-log'),
             btnLogToggle: document.getElementById('btn-toggle-log'),
             btnEnd: document.getElementById('btn-end'),
             btnBuy: document.getElementById('btn-buy'),
@@ -93,10 +95,24 @@ class PrismataWeb {
     showWelcomeScreen() {
         this.elements.welcomeScreen.classList.remove('hidden');
 
-        document.getElementById('btn-pve').onclick = () => {
-            this.elements.welcomeScreen.classList.add('hidden');
-            this.showAISelection();
-        };
+        const btnPvE = document.getElementById('btn-pve');
+        if (btnPvE) {
+            btnPvE.onclick = () => {
+                this.gameMode = 'AI';
+                this.elements.welcomeScreen.classList.add('hidden');
+                this.showAISelection();
+            };
+        }
+
+        const btnPvP = document.getElementById('btn-pvp');
+        if (btnPvP) {
+            btnPvP.onclick = () => {
+                this.gameMode = 'HOTSEAT';
+                this.selectedAI = 'Human';
+                this.elements.welcomeScreen.classList.add('hidden');
+                this.startGame();
+            };
+        }
     }
 
     showAISelection() {
@@ -135,7 +151,11 @@ class PrismataWeb {
                 this.elements.loadingOverlay.style.display = 'none';
                 this.elements.app.classList.remove('hidden');
                 this.updateUI();
-                this.log(`Game Initialized. Battling ${this.selectedAI} AI.`, "system");
+                if (this.gameMode === 'AI') {
+                    this.log(`Game Initialized. Battling ${this.selectedAI} AI.`, "system");
+                } else {
+                    this.log("Hotseat PvP Mode Started.", "system");
+                }
             }, 500);
         }, 100);
     }
@@ -275,8 +295,14 @@ class PrismataWeb {
         this.updatePlayerStats('p2', this.state.p2);
 
         // Render Units
-        this.renderUnits(this.elements.p1Units, this.state.p1.units, true);
-        this.renderUnits(this.elements.p2Units, this.state.p2.units, false);
+        // In AI mode, P1 is always friendly, P2 is AI.
+        // In HOTSEAT mode, 'isFriendly' depends on who is the 'currentPlayer' in the state.
+        const p1Name = this.state.p1.name;
+        const p2Name = this.state.p2.name;
+        const isP1Turn = this.state.currentPlayer === p1Name;
+
+        this.renderUnits(this.elements.p1Units, this.state.p1.units, isP1Turn);
+        this.renderUnits(this.elements.p2Units, this.state.p2.units, !isP1Turn);
 
         // Update Buttons
         this.updateActionButtons();
@@ -375,6 +401,7 @@ class PrismataWeb {
                 const unitNumber = indexInType + 1;
 
                 card.className = `unit-card ${isExhausted ? 'exhausted' : ''} ${isAttacking ? 'attacking' : ''} ${isBlocking ? 'blocking' : ''}`;
+                card.style.zIndex = indexInType;
                 const imgUrl = this.unitImages[unit.type];
 
                 card.innerHTML = `
@@ -407,7 +434,11 @@ class PrismataWeb {
                 // Mark for rotation animation (Top Card)
                 if (indexInType === rotationIndex) {
                     card.classList.add('rotation-target');
+                    card.style.transformOrigin = 'top center';
                 }
+
+                card.dataset.type = type;
+                card.dataset.unitNumber = unitNumber;
 
                 column.appendChild(card);
             });
@@ -480,7 +511,10 @@ class PrismataWeb {
         }
 
         // Action context
-        const isFriendly = true; // Board rendering sets this
+        const isP1Card = this.elements.p1Units.contains(columnElement);
+        const isP1Turn = this.state.currentPlayer === this.state.p1.name;
+        const isFriendly = (isP1Card && isP1Turn) || (!isP1Card && !isP1Turn);
+
         const canAct = this.state.phase === 'Action' && isFriendly;
         if (!canAct) return;
 
@@ -496,18 +530,18 @@ class PrismataWeb {
                 # Find the actual unit object
                 unit_type = "${unit.type}"
                 unit_idx = ${unitNumber} - 1  # Convert to 0-based index
-                units_of_type = game.player1.get_units_by_type(unit_type)
+                units_of_type = game.current_player.get_units_by_type(unit_type)
                 
                 if unit_idx < len(units_of_type):
                     target_unit = units_of_type[unit_idx]
                     if not target_unit.exhausted and target_unit.is_alive():
                         # Add to prepared squad (to attack next turn)
                         if target_unit not in engine.prepared_squad:
-                            if game.player1.energy >= target_unit.attack_cost:
+                            if game.current_player.energy >= target_unit.attack_cost:
                                 engine.prepared_squad.append(target_unit)
-                                game.player1.energy -= target_unit.attack_cost
+                                game.current_player.energy -= target_unit.attack_cost
                                 target_unit.exhausted = True
-                                game.player1.displayed_attack = sum(u.attack for u in engine.prepared_squad)
+                                game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
                                 success = True
                                 msg = f"Prepared {target_unit.name} for attack"
                             else:
@@ -534,9 +568,6 @@ class PrismataWeb {
                 }
                 this.sounds.play('PREPARE_ATTACK');
                 this.log(`${unit.name} #${unitNumber} prepared to attack!`, 'player1');
-
-                // Brief delay for animation
-                await new Promise(r => setTimeout(r, 200));
             } else {
                 this.log(`Error: ${result.msg}`, 'important');
             }
@@ -560,38 +591,43 @@ class PrismataWeb {
 
     startTargeting(sourceUnit, sourceNumber) {
         this.targeting = { sourceUnit, sourceNumber };
+        const currentPlayerName = this.state.currentPlayer;
         this.log(`Click a friendly unit to overcharge with Overcharger #${sourceNumber}`, 'system');
 
-        // Temporarily change all friendly cards to targeting mode
-        const friendlyCards = this.elements.p1Units.querySelectorAll('.unit-card');
-        friendlyCards.forEach((cardEl, idx) => {
+        // Temporarily change all current player's cards to targeting mode
+        const friendlyArea = currentPlayerName === this.state.p1.name ? this.elements.p1Units : this.elements.p2Units;
+        const friendlyCards = friendlyArea.querySelectorAll('.unit-card');
+
+        friendlyCards.forEach((cardEl) => {
             const originalClass = cardEl.className;
             cardEl.style.border = '2px solid yellow';
             cardEl.onclick = (e) => {
                 e.stopPropagation();
-                this.executeTargetedAbility(idx + 1);
+                const targetType = cardEl.dataset.type;
+                const targetNum = cardEl.dataset.unitNumber;
+                this.executeTargetedAbility(targetType, targetNum);
                 // Restore cards
                 this.updateUI();
             };
         });
     }
 
-    executeTargetedAbility(targetNumber) {
+    executeTargetedAbility(targetType, targetNumber) {
         const { sourceUnit, sourceNumber } = this.targeting;
         this.pyodide.runPython(`
             source_type = "${sourceUnit.type}"
             source_num = ${sourceNumber}
-            target_type = "${this.state.p1.units[targetNumber - 1].type}"
+            target_type = "${targetType}"
             target_idx = ${targetNumber}
             
             # Find the actual unit object in python
-            target_unit = game.player1.get_units_by_type(target_type)[target_idx-1]
+            target_unit = game.current_player.get_units_by_type(target_type)[int(target_idx)-1]
             success, msg = engine.use_ability(source_type, source_num, target=target_unit)
             {"success": success, "msg": msg}
         `);
 
         this.targeting = null;
-        this.log(`Overcharged unit #${targetNumber}`, 'player1');
+        this.log(`Overcharged ${targetType} #${targetNumber}`, 'player1');
         this.sounds.play('ABILITY');
         this.syncState();
     }
@@ -829,6 +865,12 @@ class PrismataWeb {
                     this.syncState();
                     this.updateUI();
 
+                    if (this.gameMode === 'HOTSEAT') {
+                        this.log(`${this.state.currentPlayer}'s turn!`, "system");
+                        this.processingTurn = false;
+                        return; // Done for Hotseat Turn Advance
+                    }
+
                     if (this.state.phase !== 'Defense') {
                         this.log("Your turn!", "player1");
                     }
@@ -889,9 +931,6 @@ class PrismataWeb {
             this.sounds.play('ABILITY');
             this.log(result[1], 'player1');
 
-            // Delay for animation
-            await new Promise(r => setTimeout(r, 200));
-
             this.syncState();
             this.updateUI();
             return true;
@@ -943,7 +982,7 @@ class PrismataWeb {
         this.elements.shopGrid.innerHTML = '';
 
         // Determine affordability
-        const player = this.state.p1;
+        const player = (this.state.currentPlayer === this.state.p1.name) ? this.state.p1 : this.state.p2;
         const currentGold = player.gold;
         const currentEnergy = player.energy;
         // 2nd unit purchased costs +1 Energy
@@ -1177,8 +1216,9 @@ class PrismataWeb {
 
         // Initialize Log Toggle
         this.elements.btnLogToggle.onclick = () => {
-            this.elements.combatLogWrapper.classList.toggle('expanded');
-            const isExpanded = this.elements.combatLogWrapper.classList.contains('expanded');
+            if (!this.elements.combatLogWrapper) return;
+            this.elements.combatLog.classList.toggle('expanded');
+            const isExpanded = this.elements.combatLog.classList.contains('expanded');
             this.elements.btnLogToggle.innerHTML = isExpanded ? '❌' : '📜';
         };
 
