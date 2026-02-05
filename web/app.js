@@ -46,6 +46,7 @@ class PrismataWeb {
             'guard': '🛡️',
             'wall': '🧱',
             'overcharger': '⚡',
+            'repeater': '⚡',
             'volatile': '🧨',
             'barrier': '🚧'
         };
@@ -57,6 +58,7 @@ class PrismataWeb {
             'guard': 'assets/cards/Guard.webp',
             'wall': 'assets/cards/Wall.webp',
             'overcharger': 'assets/cards/Repeater.webp',
+            'repeater': 'assets/cards/Repeater.webp',
             'volatile': 'assets/cards/Volitile.webp',
             'barrier': 'assets/cards/Barrier.webp'
         };
@@ -326,10 +328,21 @@ class PrismataWeb {
             let interactiveIndex = -1;
             for (let i = unitsByType[type].length - 1; i >= 0; i--) {
                 const u = unitsByType[type][i];
-                // Walls are interactive even when exhausted (for repair)
-                if (!u.exhausted || (isFriendly && u.type === 'wall')) {
-                    interactiveIndex = i;
-                    break;
+                // In Assignment phase (enemy units), any alive unit is clickable
+                // In Action/Defense phase (friendly units), only non-exhausted units (or walls for repair)
+                const isAssignmentPhase = !isFriendly && this.state.phase === 'Assignment';
+                if (isAssignmentPhase) {
+                    // Assignment: any alive unit
+                    if (u.hp > 0) {
+                        interactiveIndex = i;
+                        break;
+                    }
+                } else {
+                    // Action/Defense: non-exhausted units (or walls)
+                    if (!u.exhausted || (isFriendly && u.type === 'wall')) {
+                        interactiveIndex = i;
+                        break;
+                    }
                 }
             }
 
@@ -363,11 +376,15 @@ class PrismataWeb {
                         ${isBlocking ? '<div class="combat-badge blocking">🛡️</div>' : ''}
                     `;
 
-                // Hover Preview
-                card.onmouseenter = (e) => {
+                // Hover Preview - only for preview popup, not for interaction
+                card.addEventListener('mouseenter', (e) => {
+                    e.stopPropagation();
                     this.handleUnitMouseEnter(unit);
-                };
-                card.onmouseleave = () => this.handleUnitMouseLeave();
+                }, { passive: true });
+                card.addEventListener('mouseleave', (e) => {
+                    e.stopPropagation();
+                    this.handleUnitMouseLeave();
+                }, { passive: true });
 
                 // Only the active card gets the 'interactive' class for the sub-glow
                 if (indexInType === interactiveIndex) {
@@ -875,14 +892,14 @@ class PrismataWeb {
     showShop() {
         // Define base costs as integers for sorting
         const shopUnits = [
-            { id: 'barrier', name: 'Barrier', cost: 1, display: '1💰', desc: 'Cheap structure with 2HP.' },
-            { id: 'miner', name: 'Miner', cost: 2, display: '2💰', desc: 'Produces +1 Gold every turn.' },
-            { id: 'energizer', name: 'Energizer', cost: 2, display: '2💰', desc: 'Produces +1 Energy every turn.' },
-            { id: 'striker', name: 'Striker', cost: 3, display: '3💰', desc: 'Fast attacker with 2 Attack.' },
-            { id: 'guard', name: 'Guard', cost: 3, display: '3💰', desc: 'Defender that can also attack.' },
-            { id: 'wall', name: 'Wall', cost: 3, display: '3💰', desc: 'Heavy structure with 3HP.' },
-            { id: 'overcharger', name: 'Overcharger', cost: 3, display: '3💰', desc: 'Boosts friendly unit attack.' },
-            { id: 'volatile', name: 'Volatile', cost: 4, display: '4💰', desc: 'Explodes to destroy an attacker.' }
+            { id: 'barrier', name: 'Barrier', cost: 1, energyCost: 0, desc: 'Cheap and fragile' },
+            { id: 'miner', name: 'Miner', cost: 2, energyCost: 0, desc: 'Produces Gold' },
+            { id: 'energizer', name: 'Energizer', cost: 2, energyCost: 0, desc: 'Produces Energy' },
+            { id: 'striker', name: 'Striker', cost: 3, energyCost: 0, desc: 'Strong attacker, cannot block' },
+            { id: 'guard', name: 'Guard', cost: 3, energyCost: 0, desc: 'Basic unit.' },
+            { id: 'wall', name: 'Wall', cost: 3, energyCost: 0, desc: 'Instant blocker.' },
+            { id: 'overcharger', name: 'Repeater', cost: 3, energyCost: 1, desc: 'Unexhausts activated unit' },
+            { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 2, desc: 'Burst attack' }
         ];
 
         // Sort by cost ascending
@@ -903,9 +920,7 @@ class PrismataWeb {
             item.className = 'shop-list-item';
 
             // Check affordability logic matching python
-            // Cost is Gold + Energy(0 usually)
-            // But we only track Gold cost in the object above for sorting
-            const unitEnergyCost = 0; // Most units 0, assuming for now
+            const unitEnergyCost = u.energyCost || 0;
             const totalEnergyReq = unitEnergyCost + penalty;
 
             let affordable = true;
@@ -932,10 +947,19 @@ class PrismataWeb {
 
             const imgUrl = this.unitImages[u.id];
 
+            // Build cost display
+            let costDisplay = `${u.cost}💰`;
+            if (unitEnergyCost > 0) {
+                costDisplay += ` ${unitEnergyCost}⚡`;
+            }
+            if (penalty > 0) {
+                costDisplay += ` ${penalty}⚡`;
+            }
+
             item.innerHTML = `
                 <div class="shop-item-info">
                    <div class="shop-item-main">
-                      <span class="unit-cost">${u.display} ${penalty > 0 ? `<span class="penalty">+1⚡</span>` : ''}</span>
+                      <span class="unit-cost">${costDisplay}</span>
                       <span class="unit-name">${u.name}</span>
                        ${!affordable ? `<span class="unit-xs-reason">${reason}</span>` : ''}
                    </div>
@@ -1059,14 +1083,15 @@ class PrismataWeb {
 
         // Descriptions (Static for now, could be pulled from Python)
         const descriptions = {
-            'miner': 'Generates 1 Gold every turn.',
-            'energizer': 'Generates 1 Energy every turn.',
-            'striker': 'Classic attacker. Needs 1 Energy to attack.',
-            'guard': 'Protector. Can block 1 damage or attack with 1.',
-            'wall': 'Heavy fortification. Blocks 2 damage but exhausts.',
-            'overcharger': 'Overcharges a unit to attack for +1.',
-            'volatile': 'Detonates to deal 3 damage, but is destroyed.',
-            'barrier': 'One-time shield. Blocks 1 damage then breaks.'
+            'barrier': 'Cheap and fragile',
+            'miner': 'Produces Gold',
+            'energizer': 'Produces Energy',
+            'striker': 'Strong attacker, cannot block',
+            'guard': 'Basic unit.',
+            'wall': 'Instant blocker.',
+            'overcharger': 'Unexhausts activated unit',
+            'repeater': 'Unexhausts activated unit',
+            'volatile': 'Burst attack'
         };
         descEl.textContent = descriptions[unit.type] || 'A strategic unit.';
     }

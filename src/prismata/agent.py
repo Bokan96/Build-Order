@@ -126,11 +126,24 @@ class Agent:
         assignments = []
         remaining = amount
         
+        # Check if we can finish the game
+        can_finish_game = remaining >= defender.base_health
+        is_aggressive = self.strategy_name == "Aggressive"
+        
         # AI Target Priority:
+        # If can finish game OR is aggressive: Hit base immediately
+        # Otherwise: Kill units first, then base
+        if can_finish_game or is_aggressive:
+            # Go for the kill or play aggressively
+            assignments.append(("base", remaining))
+            self.log(f"Damage assigned to Base: {remaining} (Finishing move)" if can_finish_game else f"Damage assigned to Base: {remaining} (Aggressive)")
+            return assignments
+        
+        # Standard priority: Kill units first
         # 1. Kill 0-HP Walls (They are "free" once block is broken)
         # 2. Kill Strikers (Threat removal)
         # 3. Kill resource generators (Miner, Energizer)
-        # 4. Hit the base
+        # 4. Hit the base with leftovers
         targets = ["wall", "striker", "miner", "energizer", "volatile", "overcharger", "guard", "barrier"]
         for t in targets:
             units = [u for u in defender.units if u.name == t and u.current_health > 0 and u.is_alive()]

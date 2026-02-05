@@ -357,7 +357,7 @@ body {
 }
 
 .unit-card:hover {
-    transform: translateY(-20px) scale(1.05);
+    /* Removed transform to prevent hover glitch on stacked cards */
     border-color: var(--accent-primary);
     box-shadow: 0 10px 30px rgba(0, 242, 255, 0.3);
     z-index: 100;
