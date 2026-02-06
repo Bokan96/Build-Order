@@ -70,7 +70,7 @@ class PrismataWeb {
 
     async init() {
         try {
-            console.log("Initializing Pyodide...");
+            console.log("Initializing Pyodide... [VERSION 0.5.2 - SNAPPY UPDATE]");
             this.updateLoadingText("Downloading Python runtime...");
 
             this.pyodide = await loadPyodide();
@@ -79,6 +79,7 @@ class PrismataWeb {
             await this.mountFileSystem();
 
             this.isLoaded = true;
+            this.bindEvents();
             this.hideLoading();
             this.showWelcomeScreen();
 
@@ -94,25 +95,7 @@ class PrismataWeb {
 
     showWelcomeScreen() {
         this.elements.welcomeScreen.classList.remove('hidden');
-
-        const btnPvE = document.getElementById('btn-pve');
-        if (btnPvE) {
-            btnPvE.onclick = () => {
-                this.gameMode = 'AI';
-                this.elements.welcomeScreen.classList.add('hidden');
-                this.showAISelection();
-            };
-        }
-
-        const btnPvP = document.getElementById('btn-pvp');
-        if (btnPvP) {
-            btnPvP.onclick = () => {
-                this.gameMode = 'HOTSEAT';
-                this.selectedAI = 'Human';
-                this.elements.welcomeScreen.classList.add('hidden');
-                this.startGame();
-            };
-        }
+        // event listeners are now in bindEvents
     }
 
     showAISelection() {
@@ -141,7 +124,6 @@ class PrismataWeb {
         setTimeout(() => {
             if (!this.initialized) {
                 this.setupGame();
-                this.bindEvents();
                 this.initialized = true;
             } else {
                 this.setupGame();
@@ -310,9 +292,12 @@ class PrismataWeb {
 
     updatePlayerStats(player, data) {
         document.getElementById(`${player}-hp`).textContent = data.hp;
-        document.getElementById(`${player}-gold`).textContent = data.gold;
-        document.getElementById(`${player}-energy`).textContent = data.energy;
 
+        // Resource styling
+        this.updateResourceDisplay(`${player}-gold`, data.gold);
+        this.updateResourceDisplay(`${player}-energy`, data.energy);
+
+        // Calculate Attack Display
         let atkDisplay = data.atk;
         if (this.state.phase === 'Assignment') {
             const combat = this.state.combat;
@@ -325,7 +310,46 @@ class PrismataWeb {
                 atkDisplay = `${remaining} / ${combat.atk}`;
             }
         }
-        document.getElementById(`${player}-atk`).textContent = atkDisplay;
+
+        // Attack is special: hide symbol if 0
+        const atkEl = document.getElementById(`${player}-atk`);
+        const atkIcon = atkEl.previousElementSibling; // The ⚔️
+
+        // Check if we have visible attack
+        let numericAtk = 0;
+        if (typeof atkDisplay === 'string' && atkDisplay.includes('/')) {
+            // "remaining / total"
+            numericAtk = parseInt(atkDisplay.split('/')[1]);
+        } else {
+            numericAtk = parseInt(atkDisplay);
+        }
+
+        if (numericAtk > 0) {
+            atkEl.textContent = atkDisplay;
+            atkEl.parentElement.style.opacity = '1';
+            atkEl.classList.remove('zero-resource');
+        } else {
+            atkEl.textContent = atkDisplay;
+            // fully hide the attack group if 0
+            atkEl.parentElement.style.opacity = '0';
+        }
+    }
+
+    updateResourceDisplay(id, checkVal) {
+        const el = document.getElementById(id);
+        const oldVal = parseInt(el.textContent) || 0;
+        el.textContent = checkVal;
+
+        if (checkVal === 0) {
+            el.classList.add('zero-resource');
+        } else {
+            el.classList.remove('zero-resource');
+        }
+
+        if (checkVal > oldVal) {
+            el.classList.add('resource-bump');
+            setTimeout(() => el.classList.remove('resource-bump'), 300);
+        }
     }
 
     renderUnits(container, units, isFriendly) {
@@ -377,8 +401,6 @@ class PrismataWeb {
                     break;
                 }
             }
-
-            console.log(`Type: ${type}, RotationIndex: ${rotationIndex}, InteractiveIndex: ${interactiveIndex}`);
 
             column.onmouseenter = () => {
                 const interactiveCard = column.querySelector('.unit-card.interactive');
@@ -505,87 +527,99 @@ class PrismataWeb {
     // -- Game Actions --
 
     async handleUnitClick(unit, unitNumber, columnElement) {
-        if (this.targeting) {
-            this.handleTargeting(unit, unitNumber);
-            return;
-        }
+        try {
+            console.log("handleUnitClick", unit.type, unitNumber);
+            if (this.targeting) {
+                this.handleTargeting(unit, unitNumber);
+                return;
+            }
 
-        // Action context
-        const isP1Card = this.elements.p1Units.contains(columnElement);
-        const isP1Turn = this.state.currentPlayer === this.state.p1.name;
-        const isFriendly = (isP1Card && isP1Turn) || (!isP1Card && !isP1Turn);
+            // Action context
+            const isP1Card = this.elements.p1Units.contains(columnElement);
+            const isP1Turn = this.state.currentPlayer === this.state.p1.name;
+            const isFriendly = (isP1Card && isP1Turn) || (!isP1Card && !isP1Turn);
 
-        const canAct = this.state.phase === 'Action' && isFriendly;
-        if (!canAct) return;
+            const canAct = this.state.phase === 'Action' && isFriendly;
+            if (!canAct) {
+                console.log("Cannot act: Phase", this.state.phase, "Friendly", isFriendly);
+                return;
+            }
 
-        // Find the card to animate (the rotation-target)
-        let animateCard = null;
-        if (columnElement) {
-            animateCard = columnElement.querySelector('.unit-card.rotation-target') || columnElement.querySelector('.unit-card.interactive');
-        }
-        // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
-        if (unit.atk > 0 && unit.type !== 'overcharger') {
-            // Prepare this specific unit for attack
-            const resultProxy = this.pyodide.runPython(`
-                # Find the actual unit object
-                unit_type = "${unit.type}"
-                unit_idx = ${unitNumber} - 1  # Convert to 0-based index
-                units_of_type = game.current_player.get_units_by_type(unit_type)
-                
-                if unit_idx < len(units_of_type):
-                    target_unit = units_of_type[unit_idx]
-                    if not target_unit.exhausted and target_unit.is_alive():
-                        # Add to prepared squad (to attack next turn)
-                        if target_unit not in engine.prepared_squad:
-                            if game.current_player.energy >= target_unit.attack_cost:
-                                engine.prepared_squad.append(target_unit)
-                                game.current_player.energy -= target_unit.attack_cost
-                                target_unit.exhausted = True
-                                game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
-                                success = True
-                                msg = f"Prepared {target_unit.name} for attack"
+            // Find the card to animate (the rotation-target)
+            let animateCard = null;
+            if (columnElement) {
+                animateCard = columnElement.querySelector('.unit-card.rotation-target') || columnElement.querySelector('.unit-card.interactive');
+                // FORCE SNAPPY: Remove transition temporarily
+                if (animateCard) animateCard.style.transition = 'none';
+            }
+            // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
+            if (unit.atk > 0 && unit.type !== 'overcharger') {
+                // Prepare this specific unit for attack
+                const resultProxy = this.pyodide.runPython(`
+                    # Find the actual unit object
+                    unit_type = "${unit.type}"
+                    unit_idx = ${unitNumber} - 1  # Convert to 0-based index
+                    units_of_type = game.current_player.get_units_by_type(unit_type)
+                    
+                    if unit_idx < len(units_of_type):
+                        target_unit = units_of_type[unit_idx]
+                        if not target_unit.exhausted and target_unit.is_alive():
+                            # Add to prepared squad (to attack next turn)
+                            if target_unit not in engine.prepared_squad:
+                                if game.current_player.energy >= target_unit.attack_cost:
+                                    engine.prepared_squad.append(target_unit)
+                                    game.current_player.energy -= target_unit.attack_cost
+                                    target_unit.exhausted = True
+                                    game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
+                                    success = True
+                                    msg = f"Prepared {target_unit.name} for attack"
+                                else:
+                                    success = False
+                                    msg = "Not enough energy"
                             else:
                                 success = False
-                                msg = "Not enough energy"
+                                msg = "Unit already attacking"
                         else:
                             success = False
-                            msg = "Unit already attacking"
+                            msg = "Unit is exhausted or dead"
                     else:
                         success = False
-                        msg = "Unit is exhausted or dead"
-                else:
-                    success = False
-                    msg = f"Invalid {unit_type} number"
-                
-                {"success": success, "msg": msg}
-            `);
-            const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
-            resultProxy.destroy();
+                        msg = f"Invalid ${unit.type} number"
+                    
+                    {"success": success, "msg": msg}
+                `);
+                const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
+                resultProxy.destroy();
 
-            if (result.success) {
-                if (animateCard) {
-                    animateCard.classList.add('exhausting-animation');
+                if (result.success) {
+                    if (animateCard) {
+                        animateCard.classList.add('exhausting-animation');
+                    }
+                    this.sounds.play('PREPARE_ATTACK');
+                    this.log(`${unit.name} #${unitNumber} prepared to attack!`, 'player1');
+                } else {
+                    this.log(`Error: ${result.msg}`, 'important');
+                    this.sounds.play('ERROR');
                 }
-                this.sounds.play('PREPARE_ATTACK');
-                this.log(`${unit.name} #${unitNumber} prepared to attack!`, 'player1');
-            } else {
-                this.log(`Error: ${result.msg}`, 'important');
+                this.syncState();
+                this.updateUI();
+                return;
             }
-            this.syncState();
-            this.updateUI();
-            return;
-        }
 
-        // Resource generation units (miner, energizer, wall)
-        if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
-            const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-            await this.processActionResult(resultProxy, animateCard);
-        } else if (unit.type === 'overcharger') {
-            this.startTargeting(unit, unitNumber, animateCard);
-        } else if (unit.type === 'volatile') {
-            // Detonate volatile
-            const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-            await this.processActionResult(resultProxy, animateCard);
+            // Resource generation units (miner, energizer, wall)
+            if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
+                const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+                await this.processActionResult(resultProxy, animateCard);
+            } else if (unit.type === 'overcharger') {
+                this.startTargeting(unit, unitNumber, animateCard);
+            } else if (unit.type === 'volatile') {
+                // Detonate volatile
+                const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+                await this.processActionResult(resultProxy, animateCard);
+            }
+        } catch (e) {
+            console.error("handleUnitClick error", e);
+            this.log("Error interacting with unit: " + e.message, 'important');
         }
     }
 
@@ -1083,7 +1117,7 @@ class PrismataWeb {
                 res_msg = ""
                 if game.phase == "Defense":
                     total_atk = sum(u.attack for u in engine.attacking_units)
-                    res_msg = f"INCOMING: {total_atk}"
+                    res_msg = f"INCOMING: ${total_atk}"
                 else:
                     engine.action_phase()
                 
@@ -1130,7 +1164,7 @@ class PrismataWeb {
         this.hoverTimeout = setTimeout(() => {
             this.updateUnitPreview(unit);
             this.elements.unitPreview.classList.remove('hidden');
-        }, 1000);
+        }, 400);
     }
 
     handleUnitMouseLeave() {
@@ -1211,8 +1245,28 @@ class PrismataWeb {
     }
 
     bindEvents() {
+        // Main Game Buttons
         this.elements.btnEnd.onclick = () => this.handleEndTurn();
         this.elements.btnBuy.onclick = () => this.handleBuy();
+
+        // Global Event Delegation for Menu Buttons (Robustness Fix)
+        document.body.addEventListener('click', (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+
+            if (target.id === 'btn-pve') {
+                console.log("PvE Mode Selected via Delegation");
+                this.gameMode = 'AI';
+                this.elements.welcomeScreen.classList.add('hidden');
+                this.showAISelection();
+            } else if (target.id === 'btn-pvp') {
+                console.log("PvP Mode Selected via Delegation");
+                this.gameMode = 'HOTSEAT';
+                this.selectedAI = 'Human';
+                this.elements.welcomeScreen.classList.add('hidden');
+                this.startGame();
+            }
+        });
 
         // Initialize Log Toggle
         this.elements.btnLogToggle.onclick = () => {
@@ -1248,6 +1302,17 @@ class PrismataWeb {
             this.resetGame();
             this.log("Game restarted.", "system");
         };
+
+        const btnExitMenu = document.getElementById('btn-exit-menu');
+        if (btnExitMenu) {
+            btnExitMenu.onclick = () => {
+                this.sounds.play('CLICK');
+                this.elements.settingsModal.classList.add('hidden');
+                this.elements.app.classList.add('hidden');
+                this.elements.welcomeScreen.classList.remove('hidden');
+                this.log("Exited to Main Menu", "system");
+            };
+        }
 
         this.elements.sliderMusic.oninput = (e) => {
             this.sounds.setMusicVolume(e.target.value / 100);
