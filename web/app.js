@@ -412,6 +412,7 @@ class PrismataWeb {
 
     renderUnits(container, units, isFriendly) {
         container.innerHTML = '';
+        const isP1Units = container.id === 'p1-units';
 
         // Group units by type
         const unitsByType = {};
@@ -539,7 +540,7 @@ class PrismataWeb {
                     column.onclick = () => this.handleBlock(interactiveUnit, rotationUnitNum);
                     column.style.cursor = 'pointer';
                 } else if (isInteractiveAssignment) {
-                    column.onclick = () => this.handleAssignDamage(interactiveUnit, interactiveUnitNum);
+                    column.onclick = () => this.handleAssignDamage(interactiveUnit, interactiveUnitNum, isP1Units);
                     column.style.cursor = 'pointer';
                 }
             }
@@ -744,14 +745,16 @@ class PrismataWeb {
         this.updateUI();
     }
 
-    handleAssignDamage(unit, unitNumber) {
+    handleAssignDamage(unit, unitNumber, isP1Target) {
         const resultProxy = this.pyodide.runPython(`
             target_type = "${unit.type}"
             target_num = ${unitNumber}
             
-            # Attacker (Player 1) chooses where leftover damage goes
-            # Determine how much HP is needed to kill this unit
-            defender = game.player2
+            # Attacker chooses where leftover damage goes
+            # Determine who is being damaged based on which unit was clicked
+            defender_is_p1 = ${isP1Target ? 'True' : 'False'}
+            defender = game.player1 if defender_is_p1 else game.player2
+            
             units = defender.get_units_by_type(target_type)
             
             if 1 <= target_num <= len(units):
