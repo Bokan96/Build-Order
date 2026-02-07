@@ -178,13 +178,54 @@ body {
 }
 
 .player-separator {
-    width: 2px;
-    height: 90%;
-    align-self: center;
-    background: linear-gradient(to bottom, transparent, var(--glass-border), transparent);
+    width: 60px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    padding-top: 1.5rem;
+    /* Align approximately with stat bars */
     flex-shrink: 0;
     order: 2;
-    /* Positioned between order 1 and order 3 */
+}
+
+.player-separator::before {
+    content: '';
+    position: absolute;
+    top: 60px;
+    /* Start line below icon */
+    bottom: 2rem;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--glass-border), transparent);
+    z-index: 0;
+}
+
+.central-attack {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 22, 30, 0.9);
+    /* Dark background */
+    border: 2px solid var(--accent-red);
+    box-shadow: 0 0 15px rgba(255, 62, 62, 0.4);
+    z-index: 10;
+    color: white;
+    font-weight: 800;
+    font-size: 1.2rem;
+    gap: 0.3rem;
+    position: relative;
+}
+
+.central-attack .icon {
+    font-size: 1.2rem;
+}
+
+.central-attack #central-atk {
+    font-size: 1.4rem;
 }
 
 .player-area.opponent .player-stats-bar {
@@ -200,6 +241,12 @@ body {
 .glass {
     background: var(--glass-bg);
     backdrop-filter: var(--glass-blur);
+}
+
+.player-stats-bar.active-player {
+    background: linear-gradient(135deg, rgba(0, 242, 255, 0.15), rgba(0, 242, 255, 0.05));
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 0 20px rgba(0, 242, 255, 0.4);
 }
 
 .player-identity {
@@ -367,7 +414,9 @@ body {
     box-shadow: 0 10px 30px rgba(0, 242, 255, 0.3);
 }
 
-.opponent .unit-card:hover {
+/* Only disable opponent hover in AI mode, not HOTSEAT */
+/* Only disable opponent hover in AI mode, not HOTSEAT */
+body.ai-mode .opponent .unit-card:hover {
     transform: none !important;
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
@@ -379,7 +428,7 @@ body {
 
 .unit-card.exhausted {
     transform: rotate(90deg) !important;
-    transform-origin: top left;
+    transform-origin: center center;
     opacity: 1;
     filter: grayscale(1) brightness(0.7);
     /* CRITICAL: Kill any transition from hover triggers */
@@ -388,8 +437,7 @@ body {
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
     margin-top: -60px;
-    margin-left: 20px;
-    /* Adjust for rotation shift */
+    /* Kept to account for rotation taking vertical space */
 }
 
 /* Subtle feedback on exhausted hover */
@@ -461,7 +509,8 @@ body {
 }
 
 /* No pop-out/lift for opponent units on hover */
-.opponent .unit-card.column-focus {
+/* No pop-out/lift for opponent units on hover IN AI MODE */
+body.ai-mode .opponent .unit-card.column-focus {
     transform: none !important;
     box-shadow: none !important;
     border-color: var(--glass-border) !important;

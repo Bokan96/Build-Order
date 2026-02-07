@@ -132,12 +132,19 @@ class PrismataWeb {
             setTimeout(() => {
                 this.elements.loadingOverlay.style.display = 'none';
                 this.elements.app.classList.remove('hidden');
-                this.updateUI();
+
+                // Set body class based on game mode
                 if (this.gameMode === 'AI') {
+                    document.body.classList.add('ai-mode');
+                    document.body.classList.remove('hotseat-mode');
                     this.log(`Game Initialized. Battling ${this.selectedAI} AI.`, "system");
                 } else {
+                    document.body.classList.add('hotseat-mode');
+                    document.body.classList.remove('ai-mode');
                     this.log("Hotseat PvP Mode Started.", "system");
                 }
+
+                this.updateUI();
             }, 500);
         }, 100);
     }
@@ -181,6 +188,11 @@ class PrismataWeb {
     }
 
     setupGame() {
+        // Determine player names based on game mode
+        const p1Name = "Player 1";
+        const p2Name = this.gameMode === 'HOTSEAT' ? "Player 2" : "AI";
+        const aiType = this.selectedAI || 'Aggressive';
+
         // Initialize GameState and GameEngine instances in Python
         this.pyodide.runPython(`
             # Create a dummy logger for the AI
@@ -190,10 +202,14 @@ class PrismataWeb {
                 def flush(self):
                     pass
             
-            game = GameState("Player 1", "AI")
+            game = GameState("${p1Name}", "${p2Name}")
             game.setup_game()
             engine = GameEngine(game)
-            ai = Agent("${this.selectedAI || 'Aggressive'}", logger=DummyLogger(), interactive=False)
+            
+            # Only create AI agent if not in HOTSEAT mode
+            ai = None
+            if "${this.gameMode}" != "HOTSEAT":
+                ai = Agent("${aiType}", logger=DummyLogger(), interactive=False)
             
             # Start the first turn properly
             engine.start_phase()
@@ -286,6 +302,9 @@ class PrismataWeb {
         this.renderUnits(this.elements.p1Units, this.state.p1.units, isP1Turn);
         this.renderUnits(this.elements.p2Units, this.state.p2.units, !isP1Turn);
 
+        // Update Central Attack
+        this.updateCentralAttack();
+
         // Update Buttons
         this.updateActionButtons();
     }
@@ -293,49 +312,88 @@ class PrismataWeb {
     updatePlayerStats(player, data) {
         document.getElementById(`${player}-hp`).textContent = data.hp;
 
-        // Resource styling
-        this.updateResourceDisplay(`${player}-gold`, data.gold);
-        this.updateResourceDisplay(`${player}-energy`, data.energy);
+        // Update player name display
+        const nameEl = document.getElementById(`${player}-name`);
+        if (nameEl) {
+            nameEl.textContent = data.name.toUpperCase();
+        }
 
-        // Calculate Attack Display
-        let atkDisplay = data.atk;
-        if (this.state.phase === 'Assignment') {
-            const combat = this.state.combat;
-            const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
-
-            const isP1Attacking = this.state.p1.units.some(u => u.attacking);
-            const isAttacker = (isP1Attacking && player === 'p1') || (!isP1Attacking && player === 'p2');
-
-            if (isAttacker) {
-                atkDisplay = `${remaining} / ${combat.atk}`;
+        // Add glow to active player's stats bar
+        const statsBar = document.querySelector(`#${player === 'p1' ? 'player-area' : 'opponent-area'} .player-stats-bar`);
+        if (statsBar) {
+            if (this.state.currentPlayer === data.name) {
+                statsBar.classList.add('active-player');
+            } else {
+                statsBar.classList.remove('active-player');
             }
         }
 
-        // Attack is special: hide symbol if 0
-        const atkEl = document.getElementById(`${player}-atk`);
-        const atkIcon = atkEl.previousElementSibling; // The ⚔️
+        // Resource styling
+        this.updateResourceDisplay(`${player}-gold`, data.gold);
+        this.updateResourceDisplay(`${player}-energy`, data.energy);
+        this.updateResourceDisplay(`${player}-hp`, data.hp, true);
+    }
 
-        // Check if we have visible attack
-        let numericAtk = 0;
-        if (typeof atkDisplay === 'string' && atkDisplay.includes('/')) {
-            // "remaining / total"
-            numericAtk = parseInt(atkDisplay.split('/')[1]);
-        } else {
-            numericAtk = parseInt(atkDisplay);
+    updateCentralAttack() {
+        const p1Atk = this.state.p1?.atk || 0;
+        const p2Atk = this.state.p2?.atk || 0;
+        let displayVal = Math.max(p1Atk, p2Atk);
+
+        // Logic for phases
+        if (this.state.phase === 'Defense') {
+            // Show unblocked damage
+            // In Defense, the active player is the DEFENDER.
+            // But the attack value comes from the ATTACKER (inactive player).
+            // We want to show (Attacker Atk) - (Defender Block).
+            // However, `data.atk` is usually current player's accumulated attack.
+            // We need `combat.atk` which is locked in for combat phase.
+            // But combat object might not be fully populated until end of turn?
+            // Actually, pyodide state should have combat info if in Defense.
+
+            // Wait, let's use the simple heuristic:
+            // If p1 is defending, p2 is attacking. Incoming = p2Atk.
+            // But combat calculation is better if available.
+            // Let's assume `p1Atk` / `p2Atk` reflects current board state.
+
+            // During defense, blockers generate `blk`.
+            // We want to show: Incoming Atk - Current Block.
+
+            // Let's use `updateUI` logic:
+            // The user says "resource attack div... should decrement".
+
+            // Where to get Block value?
+            // Block is sum of blocking units block value.
+            const p1Blk = this.state.p1.units.reduce((sum, u) => sum + (u.blocking ? u.blk : 0), 0);
+            const p2Blk = this.state.p2.units.reduce((sum, u) => sum + (u.blocking ? u.blk : 0), 0);
+
+            if (this.state.currentPlayer === this.state.p1.name) {
+                // P1 is defending against P2
+                displayVal = Math.max(0, p2Atk - p1Blk);
+            } else {
+                // P2 is defending against P1
+                displayVal = Math.max(0, p1Atk - p2Blk);
+            }
+
+        } else if (this.state.phase === 'Assignment') {
+            const combat = this.state.combat;
+            displayVal = Math.max(0, combat.atk - combat.blk - combat.assigned);
         }
 
-        if (numericAtk > 0) {
-            atkEl.textContent = atkDisplay;
-            atkEl.parentElement.style.opacity = '1';
-            atkEl.classList.remove('zero-resource');
-        } else {
-            atkEl.textContent = atkDisplay;
-            // fully hide the attack group if 0
-            atkEl.parentElement.style.opacity = '0';
+        const atkEl = document.getElementById('central-atk');
+        if (atkEl) {
+            atkEl.textContent = displayVal;
+            // Visual feedback if > 0
+            if (displayVal > 0) {
+                atkEl.parentElement.style.opacity = '1';
+                atkEl.parentElement.style.borderColor = 'var(--accent-red)';
+            } else {
+                atkEl.parentElement.style.opacity = '0.5';
+                atkEl.parentElement.style.borderColor = 'var(--glass-border)';
+            }
         }
     }
 
-    updateResourceDisplay(id, checkVal) {
+    updateResourceDisplay(id, checkVal, isHp = false) {
         const el = document.getElementById(id);
         const oldVal = parseInt(el.textContent) || 0;
         el.textContent = checkVal;
@@ -491,12 +549,25 @@ class PrismataWeb {
     }
 
     updateActionButtons() {
-        // In Assignment phase, the ATTACKER (Player 1) is acting, 
-        // even if the currentPlayer tracker might be the defender (AI).
-        const isMyTurn = this.state.currentPlayer === "Player 1";
+        // In AI mode, we restrict actions to Player 1.
+        // In HOTSEAT mode, we allow actions for whoever is the current player.
+
+        let isMyTurn = false;
         const phase = this.state.phase;
 
-        const canAct = isMyTurn || phase === 'Assignment';
+        if (this.gameMode === 'HOTSEAT') {
+            // In Hotseat, it's always "my turn" if I am the active human
+            isMyTurn = true;
+        } else {
+            // In AI Mode, only Player 1 is human
+            isMyTurn = this.state.currentPlayer === "Player 1";
+        }
+
+        // Special case for Assignment: Attacker acts, which might be P1 even if defender is current?
+        // Actually engine logic usually switches "currentPlayer" context.
+        // But let's keep the loose "Assignment" check for safety if legacy logic requires it.
+        const canAct = isMyTurn || (this.gameMode !== 'HOTSEAT' && phase === 'Assignment' && this.state.p1.units.some(u => u.attacking));
+        // Logic simplification: In Hotseat, canAct is always true effectively
 
         this.elements.btnEnd.disabled = !canAct;
         this.elements.btnBuy.disabled = !isMyTurn || phase === 'Defense' || phase === 'Assignment';
@@ -722,6 +793,8 @@ class PrismataWeb {
     }
 
     async handleEndTurn() {
+        console.log("handleEndTurn called - Current Player:", this.state?.currentPlayer, "Phase:", this.state?.phase, "GameMode:", this.gameMode);
+
         // Prevent double-clicking
         if (this.processingTurn) return;
         this.processingTurn = true;
@@ -738,10 +811,24 @@ class PrismataWeb {
                 const res = resProxy.toJs({ dict_converter: Object.fromEntries });
                 resProxy.destroy();
 
+
                 if (res.game_phase === 'Assignment') {
                     // Attacker must assign breach damage
+
+                    // In HOTSEAT mode, always let the human attacker assign
+                    if (this.gameMode === 'HOTSEAT') {
+                        this.log("BREACH! Click enemy units to assign damage.", "important");
+                        this.syncState();
+                        this.updateUI();
+                        this.processingTurn = false;
+                        this.elements.btnEnd.disabled = false;
+                        this.elements.btnBuy.disabled = false;
+                        return;
+                    }
+
+                    // AI mode logic
                     if (this.state.currentPlayer === 'Player 1') {
-                        // AI attacked, Athlete (Player 1) defended, now AI (Attacker) assigns
+                        // AI attacked, Player 1 defended, now AI (Attacker) assigns
                         this.log("AI is assigning damage...", "system");
                         const aiResProxy = this.pyodide.runPython(`
                             assignments = ai.assign_damage(game, engine, sum(u.attack for u in engine.attacking_units) - sum(u.block for u in engine.blocking_units))
@@ -757,6 +844,8 @@ class PrismataWeb {
                         this.syncState();
                         this.updateUI();
                         this.processingTurn = false;
+                        this.elements.btnEnd.disabled = false;
+                        this.elements.btnBuy.disabled = false;
                         return;
                     }
                 } else {
@@ -766,6 +855,8 @@ class PrismataWeb {
                 this.syncState();
                 this.updateUI();
                 this.processingTurn = false;
+                this.elements.btnEnd.disabled = false;
+                this.elements.btnBuy.disabled = false;
 
             } else if (this.state.phase === 'Assignment') {
                 // Attacker finished assigning damage - auto-assign leftover to base
@@ -795,11 +886,16 @@ class PrismataWeb {
                 this.syncState();
                 this.updateUI();
 
-                // Proceed with AI's Action phase
+                // Proceed with next player's Action phase
                 this.processingTurn = false;
 
-                // Use setTimeout to ensure UI updates before AI logic hits
-                setTimeout(() => this.runAIActionPhase(), 100);
+                // Only run AI action phase if in AI mode
+                if (this.gameMode !== 'HOTSEAT') {
+                    setTimeout(() => this.runAIActionPhase(), 100);
+                } else {
+                    this.log(`${this.state.currentPlayer}'s turn!`, "system");
+                    this.updateUI();
+                }
 
             } else {
                 // End Action Phase
@@ -817,6 +913,30 @@ class PrismataWeb {
                 this.syncState();
                 this.updateUI();
 
+                // ===== HOTSEAT MODE =====
+                if (this.gameMode === 'HOTSEAT') {
+                    if (this.state.phase === 'Defense') {
+                        // Opponent needs to defend (human player)
+                        const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
+                        const incomingAtk = incomingAtkProxy;
+                        this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage. ${this.state.currentPlayer}, assign your blockers!`, "important");
+                    } else {
+                        // No attack, just Action phase
+                        this.pyodide.runPython(`
+                           if game.phase != "Action":
+                               engine.action_phase()
+                        `);
+                        this.syncState();
+                        this.log(`${this.state.currentPlayer}'s turn!`, "system");
+                    }
+                    this.updateUI();
+                    this.processingTurn = false;
+                    this.elements.btnEnd.disabled = false;
+                    this.elements.btnBuy.disabled = false;
+                    return;
+                }
+
+                // ===== AI MODE =====
                 if (this.state.phase === 'Defense') {
                     // Player attacked - AI needs to defend
                     const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
@@ -898,12 +1018,6 @@ class PrismataWeb {
 
                     this.syncState();
                     this.updateUI();
-
-                    if (this.gameMode === 'HOTSEAT') {
-                        this.log(`${this.state.currentPlayer}'s turn!`, "system");
-                        this.processingTurn = false;
-                        return; // Done for Hotseat Turn Advance
-                    }
 
                     if (this.state.phase !== 'Defense') {
                         this.log("Your turn!", "player1");
