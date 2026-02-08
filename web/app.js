@@ -272,6 +272,13 @@ class PrismataWeb {
         const bundleProxy = this.pyodide.runPython("get_ui_bundle()");
         this.state = bundleProxy.toJs({ dict_converter: Object.fromEntries });
         bundleProxy.destroy();
+
+        // Hotfix: For Assignment phase, UI should treat Attacker as active player
+        // This ensures proper interaction targeting (Attacker clicks Defender units)
+        if (this.state.phase === 'Assignment') {
+            const defender = this.state.currentPlayer;
+            this.state.currentPlayer = defender === 'Player 1' ? 'Player 2' : 'Player 1';
+        }
     }
 
     updateUI() {
@@ -406,7 +413,10 @@ class PrismataWeb {
 
         if (checkVal > oldVal) {
             el.classList.add('resource-bump');
-            setTimeout(() => el.classList.remove('resource-bump'), 300);
+            setTimeout(() => el.classList.remove('resource-bump'), 600);
+        } else if (checkVal < oldVal) {
+            el.classList.add('resource-drop');
+            setTimeout(() => el.classList.remove('resource-drop'), 600);
         }
     }
 
@@ -473,6 +483,7 @@ class PrismataWeb {
             };
 
             const interactiveUnit = interactiveIndex !== -1 ? unitsByType[type][interactiveIndex] : null;
+            const rotationUnitNum = rotationIndex + 1;
 
             unitsByType[type].forEach((unit, indexInType) => {
                 const card = document.createElement('div');
@@ -495,21 +506,52 @@ class PrismataWeb {
                 card.addEventListener('mouseenter', (e) => {
                     e.stopPropagation();
                     this.handleUnitMouseEnter(unit);
+
+                    // Lift effect
+                    if (card.classList.contains('interactive')) {
+                        card.classList.add('column-focus');
+                    }
                 }, { passive: true });
+
                 card.addEventListener('mouseleave', (e) => {
                     e.stopPropagation();
                     this.handleUnitMouseLeave();
+                    card.classList.remove('column-focus');
                 }, { passive: true });
 
-                // Interactive Glow (Bottom Card)
-                if (indexInType === interactiveIndex) {
-                    const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall');
-                    const canBlockInDefense = isFriendly && !isExhausted && this.state.phase === 'Defense' && unit.blk > 0 && !isBlocking;
-                    const canDamageInAssignment = !isFriendly && this.state.phase === 'Assignment' && unit.hp > 0;
+                // Interaction Logic
+                const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall');
+                const canBlockInDefense = isFriendly && !isExhausted && this.state.phase === 'Defense' && unit.blk > 0 && !isBlocking;
+                const canDamageInAssignment = !isFriendly && this.state.phase === 'Assignment' && unit.hp > 0;
 
-                    if (canActInAction || canBlockInDefense || canDamageInAssignment) {
-                        card.classList.add('interactive');
+                let isInteractive = false;
+
+                if (indexInType === interactiveIndex) {
+                    // Action/Defense Restricted to Top Card
+                    if (canActInAction || canBlockInDefense) {
+                        isInteractive = true;
                     }
+                }
+
+                // Assignment allows ANY unit (ignore interactiveIndex)
+                if (canDamageInAssignment) {
+                    isInteractive = true;
+                }
+
+                if (isInteractive) {
+                    card.classList.add('interactive');
+                    card.style.cursor = 'pointer';
+
+                    card.onclick = (e) => {
+                        e.stopPropagation();
+                        if (canActInAction) {
+                            this.handleUnitClick(unit, rotationUnitNum, column);
+                        } else if (canBlockInDefense) {
+                            this.handleBlock(unit);
+                        } else if (canDamageInAssignment) {
+                            this.handleAssignDamage(unit, unitNumber, isP1Units, column);
+                        }
+                    };
                 }
 
                 // Mark for rotation animation (Top Card)
@@ -523,27 +565,6 @@ class PrismataWeb {
 
                 column.appendChild(card);
             });
-
-            const interactiveUnitNum = interactiveIndex + 1;
-            const rotationUnitNum = rotationIndex + 1;
-
-            // Set column level interaction
-            if (interactiveUnit) {
-                const isInteractiveAction = isFriendly && this.state.phase === 'Action' && (!interactiveUnit.exhausted || interactiveUnit.type === 'wall');
-                const isInteractiveDefense = isFriendly && !interactiveUnit.exhausted && this.state.phase === 'Defense' && interactiveUnit.blk > 0 && !interactiveUnit.blocking;
-                const isInteractiveAssignment = !isFriendly && this.state.phase === 'Assignment' && interactiveUnit.hp > 0;
-
-                if (isInteractiveAction) {
-                    column.onclick = () => this.handleUnitClick(interactiveUnit, rotationUnitNum, column);
-                    column.style.cursor = 'pointer';
-                } else if (isInteractiveDefense) {
-                    column.onclick = () => this.handleBlock(interactiveUnit, rotationUnitNum);
-                    column.style.cursor = 'pointer';
-                } else if (isInteractiveAssignment) {
-                    column.onclick = () => this.handleAssignDamage(interactiveUnit, interactiveUnitNum, isP1Units);
-                    column.style.cursor = 'pointer';
-                }
-            }
 
             container.appendChild(column);
         });
@@ -745,10 +766,15 @@ class PrismataWeb {
         this.updateUI();
     }
 
-    handleAssignDamage(unit, unitNumber, isP1Target) {
+    handleAssignDamage(unit, unitNumber, isP1Target, column) {
+        // Calculate remaining in JS to avoid engine state issues
+        const combat = this.state.combat;
+        const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
+
         const resultProxy = this.pyodide.runPython(`
             target_type = "${unit.type}"
             target_num = ${unitNumber}
+            remaining_dmg = ${remaining}
             
             # Attacker chooses where leftover damage goes
             # Determine who is being damaged based on which unit was clicked
@@ -761,8 +787,15 @@ class PrismataWeb {
                 target_unit = units[target_num-1]
                 hp_needed = target_unit.current_health
                 
-                # Try to resolve combat for this unit
-                success, msg = engine.resolve_combat([(target_type, hp_needed)])
+                # Check remaining unassigned attack
+                remaining = remaining_dmg
+                
+                if hp_needed > remaining:
+                    success = False
+                    msg = f"Not enough damage remaining! Needed: {hp_needed}, Available: {remaining}"
+                else:
+                    # Try to resolve combat for this unit
+                    success, msg = engine.resolve_combat([(target_type, hp_needed)])
             else:
                 success = False
                 msg = f"Invalid unit number {target_num}"
@@ -779,21 +812,32 @@ class PrismataWeb {
             // Re-sync to check if breach is finished
             this.syncState();
 
+            // Check if all damage assigned
             const combat = this.state.combat;
             const remaining = (combat.atk - combat.blk) - combat.assigned;
 
             if (remaining <= 0) {
-                this.log("All breach damage assigned.", "system");
-                // Use the same logic as btnEnd.onclick for Assignment phase
                 this.handleEndTurn();
             } else {
                 this.updateUI();
             }
         } else {
-            this.log(`Could not target ${unit.name}: ${result.msg}`, 'important');
+            // Error handling
+            this.log(`Error: ${result.msg}`, 'important');
+            this.sounds.play('ERROR');
+
+            if (column) {
+                // Shake animation
+                const card = column.querySelector('.unit-card.interactive') || column.querySelector('.unit-card');
+                if (card) {
+                    card.classList.add('shake-animation');
+                    setTimeout(() => card.classList.remove('shake-animation'), 600);
+                }
+            }
             this.updateUI();
         }
     }
+
 
     async handleEndTurn() {
         console.log("handleEndTurn called - Current Player:", this.state?.currentPlayer, "Phase:", this.state?.phase, "GameMode:", this.gameMode);
@@ -806,6 +850,9 @@ class PrismataWeb {
 
         try {
             if (this.state.phase === 'Defense') {
+                const defenderName = this.state.currentPlayer;
+                const attackerName = defenderName === 'Player 1' ? 'Player 2' : 'Player 1';
+
                 // Defender finished blocking - check for breach using engine
                 const resProxy = this.pyodide.runPython(`
                     success, msg = engine.finish_defense()
@@ -818,7 +865,7 @@ class PrismataWeb {
                 if (res.game_phase === 'Assignment') {
                     // Attacker must assign breach damage
 
-                    // In HOTSEAT mode, always let the human attacker assign
+                    // In HOTSEAT mode, let human attacker assign
                     if (this.gameMode === 'HOTSEAT') {
                         this.log("BREACH! Click enemy units to assign damage.", "important");
                         this.syncState();
@@ -971,6 +1018,17 @@ class PrismataWeb {
                         this.processingTurn = false;
                         return; // Wait for player to assign
                     }
+                } else if (this.state.phase === 'Assignment') {
+                    // Human finished Assignment Phase -> Transition to Defender Action
+                    this.pyodide.runPython(`
+                        engine.end_phase()
+                        engine.action_phase()
+                    `);
+                    this.syncState();
+                    this.updateUI();
+                    this.processingTurn = false;
+                    this.elements.btnEnd.disabled = false;
+                    this.elements.btnBuy.disabled = false;
                 } else {
                     // No attack, but we might still need to transition to Action phase for AI
                     this.pyodide.runPython(`

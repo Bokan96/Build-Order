@@ -1268,3 +1268,71 @@ body.ai-mode .opponent .unit-card.column-focus {
     background: var(--accent-red);
     color: white;
 }
+
+/* Animations */
+@keyframes resourceBump {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.5);
+        color: var(--accent-green);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.resource-bump {
+    animation: resourceBump 0.6s ease-out;
+}
+
+@keyframes resourceDrop {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(0.8);
+        color: var(--accent-red);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.resource-drop {
+    animation: resourceDrop 0.6s ease-out;
+}
+
+@keyframes shakeError {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    10%,
+    30%,
+    50%,
+    70%,
+    90% {
+        transform: translateX(-5px);
+    }
+
+    20%,
+    40%,
+    60%,
+    80% {
+        transform: translateX(5px);
+    }
+}
+
+.shake-animation {
+    animation: shakeError 0.4s cubic-bezier(.36, .07, .19, .97) both;
+    border-color: var(--accent-red) !important;
+    box-shadow: 0 0 15px var(--accent-red) !important;
+}
