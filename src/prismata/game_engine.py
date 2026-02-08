@@ -35,52 +35,52 @@ class GameEngine:
         self.game.phase = "Start"
         return msg
 
-    def defense_phase(self):
-        """Enter the Defense Phase after actions are complete."""
+    def block_phase(self):
+        """Enter the Block Phase after actions are complete."""
         player = self.game.current_player
         
         if self.game.pending_attackers:
-            self.game.phase = "Defense"
+            self.game.phase = "Block"
             self.attacking_units = self.game.pending_attackers
             self.game.pending_attackers = []
             self.blocking_units = [] 
             self.assigned_damage = 0 
             
             total_damage = sum(u.attack for u in self.attacking_units)
-            # Ensure the attacker's damage is displayed during our defense phase
+            # Ensure the attacker's damage is displayed during our block phase
             self.game.other_player.displayed_attack = total_damage
             
             ready_blockers = [u for u in player.units if not u.exhausted and u.block > 0]
             
             if ready_blockers:
-                return f"Defense Phase: INCOMING ATTACK! {total_damage} damage incoming.\nYou may assign blockers."
+                return f"Block Phase: INCOMING ATTACK! {total_damage} damage incoming.\nYou may assign blockers."
             else:
-                return f"Defense Phase: INCOMING ATTACK! {total_damage} damage incoming.\n[NO READY BLOCKERS AVAILABLE]"
+                return f"Block Phase: INCOMING ATTACK! {total_damage} damage incoming.\n[NO READY BLOCKERS AVAILABLE]"
         
         # No attack to defend against
         self.game.phase = "ActionDone" 
         player.ready_all_units() # Ready immediately if no defense needed
         return "No incoming attack. Proceeding to Action."
 
-    def finish_defense(self):
-        """End defense and check if assignment is needed."""
-        if self.game.phase != "Defense":
-            return False, "Not in Defense Phase"
+    def finish_blocking(self):
+        """End blocking and check if breach phase is needed."""
+        if self.game.phase != "Block":
+            return False, "Not in Block Phase"
             
         total_atk = sum(u.attack for u in self.attacking_units)
         total_blk = sum(u.block for u in self.blocking_units)
         
         if total_atk > total_blk:
-            self.game.phase = "Assignment"
+            self.game.phase = "Breach"
             return True, "Breach! Assign damage to enemy units or base."
         else:
             self.end_phase()
             self.action_phase()
-            return True, "Defense resolved. Moving to Action."
+            return True, "Blocking resolved. Moving to Action."
         
     def action_phase(self):
         """Enter the Action Phase."""
-        if self.game.phase == "Defense":
+        if self.game.phase == "Block":
              # We just finished defending? No, defense happens before Action.
              pass
         self.game.phase = "Action"
@@ -203,8 +203,8 @@ class GameEngine:
         Assign units to block.
         unit_list is a list of (unit_type, count) tuples.
         """
-        if self.game.phase != "Defense":
-            return False, "Can only assign blockers during Defense Phase"
+        if self.game.phase != "Block":
+            return False, "Can only assign blockers during Block Phase"
             
         defender = self.game.current_player
         added_count = 0
@@ -240,8 +240,8 @@ class GameEngine:
         """
         Resolve combat with damage assignments.
         """
-        if self.game.phase not in ["Defense", "Assignment"]:
-            return False, "Can only resolve combat during Defense or Assignment Phase"
+        if self.game.phase not in ["Block", "Breach"]:
+            return False, "Can only resolve combat during Block or Breach Phase"
             
         # Calculate total damage
         total_attack = sum(u.attack for u in self.attacking_units)
@@ -316,7 +316,7 @@ class GameEngine:
     def end_phase(self):
         """Execute the End Phase."""
         # If we are finishing the Action Phase, do NOT clear prepared attackers
-        # They need to be passed to the next player's Defense Phase
+        # They need to be passed to the next player's Block Phase
         is_action_ending = (self.game.phase == "Action")
         
         self.game.phase = "End"
@@ -337,11 +337,11 @@ class GameEngine:
         self.blocking_units = []
         self.assigned_damage = 0
         
-        # Clear attacking units ONLY if we just finished defending (combat resolved)
+        # Clear attacking units ONLY if we just finished blocking (combat resolved)
         # If we just finished Action, we keep them for the queue
         if not is_action_ending:
              self.attacking_units = []
-             # USER REQUEST: Ready units after defense phase
+             # USER REQUEST: Ready units after block phase
              self.game.current_player.ready_all_units()
         
         # Reset display stats

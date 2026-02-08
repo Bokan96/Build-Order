@@ -273,9 +273,9 @@ class PrismataWeb {
         this.state = bundleProxy.toJs({ dict_converter: Object.fromEntries });
         bundleProxy.destroy();
 
-        // Hotfix: For Assignment phase, UI should treat Attacker as active player
+        // Hotfix: For Breach phase, UI should treat Attacker as active player
         // This ensures proper interaction targeting (Attacker clicks Defender units)
-        if (this.state.phase === 'Assignment') {
+        if (this.state.phase === 'Breach') {
             const defender = this.state.currentPlayer;
             this.state.currentPlayer = defender === 'Player 1' ? 'Player 2' : 'Player 1';
         }
@@ -294,6 +294,19 @@ class PrismataWeb {
         document.getElementById('turn-count').textContent = this.state.turn;
         document.getElementById('phase-name').textContent = this.state.phase.toUpperCase();
         document.getElementById('player-name-display').textContent = this.state.currentPlayer.toUpperCase();
+
+        // Update Tab Title
+        const playerShort = this.state.currentPlayer === 'Player 1' ? 'P1' : (this.state.currentPlayer === 'Player 2' ? 'P2' : this.state.currentPlayer);
+        const phaseEmojis = {
+            'Start': '🏁',
+            'Action': '🧭',
+            'Block': '🛡️',
+            'Breach': '⚔️',
+            'End': '⌛',
+            'GameOver': '🏆'
+        };
+        const emoji = phaseEmojis[this.state.phase] || (this.state.gameOver ? '🏆' : '🎮');
+        document.title = `Build Order | ${playerShort} ${this.state.phase} ${emoji}`;
 
         // Update Stats
         this.updatePlayerStats('p1', this.state.p1);
@@ -849,20 +862,20 @@ class PrismataWeb {
         this.elements.btnBuy.disabled = true;
 
         try {
-            if (this.state.phase === 'Defense') {
+            if (this.state.phase === 'Block') {
                 const defenderName = this.state.currentPlayer;
                 const attackerName = defenderName === 'Player 1' ? 'Player 2' : 'Player 1';
 
                 // Defender finished blocking - check for breach using engine
                 const resProxy = this.pyodide.runPython(`
-                    success, msg = engine.finish_defense()
+                    success, msg = engine.finish_blocking()
                     {"game_phase": game.phase, "msg": msg}
                 `);
                 const res = resProxy.toJs({ dict_converter: Object.fromEntries });
                 resProxy.destroy();
 
 
-                if (res.game_phase === 'Assignment') {
+                if (res.game_phase === 'Breach') {
                     // Attacker must assign breach damage
 
                     // In HOTSEAT mode, let human attacker assign
@@ -908,7 +921,7 @@ class PrismataWeb {
                 this.elements.btnEnd.disabled = false;
                 this.elements.btnBuy.disabled = false;
 
-            } else if (this.state.phase === 'Assignment') {
+            } else if (this.state.phase === 'Breach') {
                 // Attacker finished assigning damage - auto-assign leftover to base
                 this.log("Finishing damage assignment...", "system");
                 const resProxy = this.pyodide.runPython(`
@@ -956,8 +969,8 @@ class PrismataWeb {
                     engine.end_turn()
                     engine.start_phase()
                     
-                    # Enter Defense phase if needed
-                    engine.defense_phase()
+                    # Enter Block phase if needed
+                    engine.block_phase()
                 `);
 
                 this.syncState();
@@ -965,7 +978,7 @@ class PrismataWeb {
 
                 // ===== HOTSEAT MODE =====
                 if (this.gameMode === 'HOTSEAT') {
-                    if (this.state.phase === 'Defense') {
+                    if (this.state.phase === 'Block') {
                         // Opponent needs to defend (human player)
                         const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
                         const incomingAtk = incomingAtkProxy;
@@ -987,7 +1000,7 @@ class PrismataWeb {
                 }
 
                 // ===== AI MODE =====
-                if (this.state.phase === 'Defense') {
+                if (this.state.phase === 'Block') {
                     // Player attacked - AI needs to defend
                     const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
                     const incomingAtk = incomingAtkProxy;
@@ -997,7 +1010,7 @@ class PrismataWeb {
                     const defenseResultProxy = this.pyodide.runPython(`
                         # AI executes defense (blocking)
                         summary = ai.execute_turn(game, engine)
-                        engine.finish_defense()
+                        engine.finish_blocking()
                         {"summary": summary, "phase": game.phase}
                     `);
                     const defenseResult = defenseResultProxy.toJs({ dict_converter: Object.fromEntries });
@@ -1011,15 +1024,15 @@ class PrismataWeb {
 
                     this.syncState();
 
-                    // If it's now Assignment phase, P1 enters Assignment mode
-                    if (this.state.phase === 'Assignment') {
+                    // If it's now Breach phase, P1 enters Breach mode
+                    if (this.state.phase === 'Breach') {
                         this.log("BREACH! Click AI units to destroy them.", "important");
                         this.updateUI();
                         this.processingTurn = false;
                         return; // Wait for player to assign
                     }
-                } else if (this.state.phase === 'Assignment') {
-                    // Human finished Assignment Phase -> Transition to Defender Action
+                } else if (this.state.phase === 'Breach') {
+                    // Human finished Breach Phase -> Transition to Defender Action
                     this.pyodide.runPython(`
                         engine.end_phase()
                         engine.action_phase()
@@ -1053,10 +1066,10 @@ class PrismataWeb {
                         
                         # Start player's turn
                         engine.start_phase()
-                        engine.defense_phase()
+                        engine.block_phase()
                         
                         res_msg = ""
-                        if game.phase == "Defense":
+                        if game.phase == "Block":
                             total_atk = sum(u.attack for u in engine.attacking_units)
                             res_msg = f"INCOMING: {total_atk}"
                         else:
@@ -1080,7 +1093,7 @@ class PrismataWeb {
                     this.syncState();
                     this.updateUI();
 
-                    if (this.state.phase !== 'Defense') {
+                    if (this.state.phase !== 'Block') {
                         this.log("Your turn!", "player1");
                     }
                 } catch (aiError) {
