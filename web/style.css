@@ -415,12 +415,8 @@ body {
 }
 
 /* Only disable opponent hover in AI mode, not HOTSEAT */
-/* Only disable opponent hover in AI mode, not HOTSEAT */
-body.ai-mode .opponent .unit-card:hover {
-    transform: none !important;
-    box-shadow: none !important;
-    border-color: var(--glass-border) !important;
-}
+/* CSS Check */
+/* Removed AI-mode specific hover suppression for symmetry */
 
 .opponent .unit-card.exhausted:hover {
     transform: rotate(90deg) !important;
@@ -509,12 +505,7 @@ body.ai-mode .opponent .unit-card:hover {
 }
 
 /* No pop-out/lift for opponent units on hover */
-/* No pop-out/lift for opponent units on hover IN AI MODE */
-body.ai-mode .opponent .unit-card.column-focus {
-    transform: none !important;
-    box-shadow: none !important;
-    border-color: var(--glass-border) !important;
-}
+/* Removed AI-mode specific focus suppression for symmetry */
 
 /* Removed confusing animation class */
 
@@ -623,6 +614,15 @@ body.ai-mode .opponent .unit-card.column-focus {
 .unit-preview.hidden {
     opacity: 0;
     transform: translateY(-50%) translateX(50px);
+}
+
+.unit-preview.left-side {
+    right: auto;
+    left: 30px;
+}
+
+.unit-preview.left-side.hidden {
+    transform: translateY(-50%) translateX(-50px);
 }
 
 .preview-art {

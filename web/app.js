@@ -319,8 +319,13 @@ class PrismataWeb {
         const p2Name = this.state.p2.name;
         const isP1Turn = this.state.currentPlayer === p1Name;
 
-        this.renderUnits(this.elements.p1Units, this.state.p1.units, isP1Turn);
-        this.renderUnits(this.elements.p2Units, this.state.p2.units, !isP1Turn);
+        // In AI mode, P2 (AI) is never 'friendly' (interactable) for the user
+        const isHotseat = this.gameMode === 'HOTSEAT';
+        const p1IsFriendly = isP1Turn;
+        const p2IsFriendly = isHotseat ? !isP1Turn : false;
+
+        this.renderUnits(this.elements.p1Units, this.state.p1.units, p1IsFriendly);
+        this.renderUnits(this.elements.p2Units, this.state.p2.units, p2IsFriendly);
 
         // Update Central Attack
         this.updateCentralAttack();
@@ -460,8 +465,8 @@ class PrismataWeb {
             let interactiveIndex = -1;
             for (let i = unitsByType[type].length - 1; i >= 0; i--) {
                 const u = unitsByType[type][i];
-                const isAssignmentPhase = !isFriendly && this.state.phase === 'Assignment';
-                if (isAssignmentPhase) {
+                const isBreachPhase = !isFriendly && this.state.phase === 'Breach';
+                if (isBreachPhase) {
                     if (u.hp > 0) {
                         interactiveIndex = i;
                         break;
@@ -509,16 +514,29 @@ class PrismataWeb {
                 card.style.zIndex = indexInType;
                 const imgUrl = this.unitImages[unit.type];
 
+                // Lethal/Safe Overlay (Breach Phase)
+                let overlayHtml = '';
+                if (this.state.phase === 'Breach' && !isFriendly && unit.hp > 0) {
+                    const combat = this.state.combat;
+                    const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
+                    if (unit.hp <= remaining) {
+                        overlayHtml = '<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255, 68, 68, 0.7);color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:1.2rem;z-index:20;text-shadow: 0 2px 4px black;">LETHAL</div>';
+                    } else {
+                        overlayHtml = `<div class="safe-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);color:#aaa;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:1rem;z-index:20;">MISS ${unit.hp}</div>`;
+                    }
+                }
+
                 card.innerHTML = `
                         <div class="unit-art" style="background-image: url('${imgUrl}')"></div>
                         ${isAttacking ? '<div class="combat-badge attacking">⚔️</div>' : ''}
                         ${isBlocking ? '<div class="combat-badge blocking">🛡️</div>' : ''}
+                        ${overlayHtml}
                     `;
 
                 // Hover Preview - available for all cards
                 card.addEventListener('mouseenter', (e) => {
                     e.stopPropagation();
-                    this.handleUnitMouseEnter(unit);
+                    this.handleUnitMouseEnter(unit, e);
 
                     // Lift effect
                     if (card.classList.contains('interactive')) {
@@ -534,20 +552,20 @@ class PrismataWeb {
 
                 // Interaction Logic
                 const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall');
-                const canBlockInDefense = isFriendly && !isExhausted && this.state.phase === 'Defense' && unit.blk > 0 && !isBlocking;
-                const canDamageInAssignment = !isFriendly && this.state.phase === 'Assignment' && unit.hp > 0;
+                const canBlockInBlock = isFriendly && !isExhausted && this.state.phase === 'Block' && unit.blk > 0 && !isBlocking;
+                const canDamageInBreach = !isFriendly && this.state.phase === 'Breach' && unit.hp > 0;
 
                 let isInteractive = false;
 
                 if (indexInType === interactiveIndex) {
-                    // Action/Defense Restricted to Top Card
-                    if (canActInAction || canBlockInDefense) {
+                    // Action/Block Restricted to Top Card
+                    if (canActInAction || canBlockInBlock) {
                         isInteractive = true;
                     }
                 }
 
-                // Assignment allows ANY unit (ignore interactiveIndex)
-                if (canDamageInAssignment) {
+                // Breach allows ANY unit (ignore interactiveIndex)
+                if (canDamageInBreach) {
                     isInteractive = true;
                 }
 
@@ -559,9 +577,9 @@ class PrismataWeb {
                         e.stopPropagation();
                         if (canActInAction) {
                             this.handleUnitClick(unit, rotationUnitNum, column);
-                        } else if (canBlockInDefense) {
+                        } else if (canBlockInBlock) {
                             this.handleBlock(unit);
-                        } else if (canDamageInAssignment) {
+                        } else if (canDamageInBreach) {
                             this.handleAssignDamage(unit, unitNumber, isP1Units, column);
                         }
                     };
@@ -598,14 +616,14 @@ class PrismataWeb {
             isMyTurn = this.state.currentPlayer === "Player 1";
         }
 
-        // Special case for Assignment: Attacker acts, which might be P1 even if defender is current?
+        // Special case for Breach: Attacker acts, which might be P1 even if defender is current?
         // Actually engine logic usually switches "currentPlayer" context.
-        // But let's keep the loose "Assignment" check for safety if legacy logic requires it.
-        const canAct = isMyTurn || (this.gameMode !== 'HOTSEAT' && phase === 'Assignment' && this.state.p1.units.some(u => u.attacking));
+        // But let's keep the loose "Breach" check for safety if legacy logic requires it.
+        const canAct = isMyTurn || (this.gameMode !== 'HOTSEAT' && phase === 'Breach' && this.state.p1.units.some(u => u.attacking));
         // Logic simplification: In Hotseat, canAct is always true effectively
 
         this.elements.btnEnd.disabled = !canAct;
-        this.elements.btnBuy.disabled = !isMyTurn || phase === 'Defense' || phase === 'Assignment';
+        this.elements.btnBuy.disabled = !isMyTurn || phase === 'Block' || phase === 'Breach';
 
         // Hide buttons completely when cannot act
         if (!canAct) {
@@ -616,10 +634,10 @@ class PrismataWeb {
             this.elements.btnBuy.style.opacity = '1';
         }
 
-        if (phase === 'Defense') {
+        if (phase === 'Block') {
             this.elements.btnEnd.textContent = "FINISH BLOCKING";
             this.elements.btnEnd.classList.add('important');
-        } else if (phase === 'Assignment') {
+        } else if (phase === 'Breach') {
             const combat = this.state.combat;
             const remaining = Math.max(0, (combat.atk - combat.blk) - combat.assigned);
             this.elements.btnEnd.textContent = `ATTACK BASE (${remaining})`;
@@ -775,6 +793,12 @@ class PrismataWeb {
     handleBlock(unit) {
         const result = this.pyodide.runPython(`engine.assign_blockers([("${unit.type}", 1)])`);
         this.sounds.play('BLOCK');
+
+        if (unit.type === 'barrier') {
+            this.log('Barrier shattered blocking the attack!', 'important');
+            this.handleUnitMouseLeave(); // Fix tooltip freeze as unit is destroyed
+        }
+
         this.syncState();
         this.updateUI();
     }
@@ -1346,12 +1370,21 @@ class PrismataWeb {
 
     // -- Unit Preview --
 
-    handleUnitMouseEnter(unit) {
+    handleUnitMouseEnter(unit, e) {
         if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
 
         this.hoverTimeout = setTimeout(() => {
             this.updateUnitPreview(unit);
-            this.elements.unitPreview.classList.remove('hidden');
+
+            // Positioning Logic: Prevent tooltip overlapping units on the right side
+            const preview = this.elements.unitPreview;
+            if (e && e.clientX > window.innerWidth / 2) {
+                preview.classList.add('left-side');
+            } else {
+                preview.classList.remove('left-side');
+            }
+
+            preview.classList.remove('hidden');
         }, 400);
     }
 
@@ -1389,6 +1422,7 @@ class PrismataWeb {
             'repeater': 'Unexhausts activated unit',
             'volatile': 'Burst attack'
         };
+
         descEl.textContent = descriptions[unit.type] || 'A strategic unit.';
     }
 
