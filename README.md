@@ -2,6 +2,13 @@
 
 A console-based Python implementation of Prismata Lite for testing game balance and mechanics.
 
+## 🌐 Web Version Available
+
+> **Looking for the graphical interface?**
+> A full web-based version of the game with UI is available on the **`Web-Port`** branch.
+> If you are viewing this on the `Web-Port` branch, simply navigate to the [`web/`](web/) directory to get started.
+
+
 ## 📋 Requirements
 
 - Python 3.7 or higher
@@ -66,7 +73,7 @@ See [docs/RULEBOOK.md](docs/RULEBOOK.md) for complete rules.
 ## 📁 Project Structure
 
 ```text
-Prismata/
+Build-Order/
 ├── src/
 │   └── prismata/      # Core game logic
 │       ├── agent.py       # AI logic
@@ -74,13 +81,17 @@ Prismata/
 │       ├── game_state.py   # State management
 │       ├── main.py        # CLI interface
 │       └── units.py       # Unit definitions
+├── web/               # Web Interface
+│   ├── index.html     # Web Entry Point
+│   ├── app.js         # Web Logic
+│   └── style.css      # Web Styling
 ├── docs/              # Documentation
 │   ├── RULEBOOK.md
 │   └── PENDING_FIXES.md
 ├── tests/             # Test scripts and scenarios
-├── data/
-│   └── logs/          # Battle logs
-├── run.py             # Main entry point
+├── run.py             # Console game entry point
+├── simulate_prismata.py # Simulation script for testing
+├── index.html         # Redirect to web version
 └── .gitignore         # Version control exclusion
 ```
 
@@ -92,6 +103,16 @@ The game includes several AI strategies to test against:
 - **Wall**: Focuses on heavy structural defense.
 - **Reactive**: Adjusts strategy based on player's board.
 - **Random**: For testing unexpected variations.
+
+## 🧪 Testing & Simulation
+
+For game balance testing, you can run automated simulations between AI strategies:
+
+```bash
+python simulate_prismata.py
+```
+
+This will run 20 rapid simulations (Tactical AI vs others) and generate a `simulation_log.txt` with detailed battle metrics.
 
 ---
 **Developed for Advanced Agentic Coding - Google Deepmind**
