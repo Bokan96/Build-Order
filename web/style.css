@@ -45,25 +45,25 @@ body {
 .dark-theme::before {
     content: '';
     position: absolute;
-    top: -50px;
-    left: -50px;
-    right: -50px;
-    bottom: -50px;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
     background: url('assets/UI/battlefield_bg.png');
-    background-size: cover;
-    background-position: center;
+    background-size: 100% 100%;
+    background-position: 20px center;
     background-repeat: no-repeat;
     z-index: -1;
-    animation: bg-wave 15s ease-in-out infinite alternate;
+    animation: bg-wave 20s ease-in-out infinite alternate;
 }
 
 @keyframes bg-wave {
     0% {
-        transform: translate(0, 0) scale(1);
+        transform: translate(0, 0) scale(0.97);
     }
 
     100% {
-        transform: translate(-20px, 15px) scale(1.05);
+        transform: translate(-10px, 8px) scale(1);
     }
 }
 
@@ -229,6 +229,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    background: rgba(20, 22, 30, 0.95);
+    backdrop-filter: blur(12px);
     border: 2px solid var(--accent-red);
     box-shadow: 0 0 15px rgba(255, 62, 62, 0.4);
     z-index: 10;
