@@ -180,7 +180,8 @@ class GameEngine:
                 u = ready_units[i]
                 u.exhaust()
                 if u.name == "Volatile":
-                    u.current_health = 0 # Destroy at end of turn
+                    u.take_damage(99) # Destroy at end of turn
+                    player.remove_dead_units()
                 self.prepared_squad.append(u)
                 units_added_this_batch += 1
             

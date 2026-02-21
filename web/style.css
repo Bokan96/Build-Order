@@ -33,6 +33,10 @@
     padding: 0;
 }
 
+button {
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
+}
+
 body {
     font-family: 'Outfit', sans-serif;
     background-color: var(--bg-dark);
@@ -40,32 +44,24 @@ body {
     overflow: hidden;
     height: 100vh;
     width: 100vw;
+    cursor: url('assets/UI/cursor.svg') 5 5, auto;
 }
 
 .dark-theme::before {
     content: '';
     position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    background: url('assets/UI/battlefield_bg.png');
+    top: 57px;
+    left: 0;
+    right: 0;
+    bottom: 89px;
+    background: url('assets/UI/battlefield_bg.jpg');
     background-size: 100% 100%;
-    background-position: 20px center;
+    background-position: center;
     background-repeat: no-repeat;
     z-index: -1;
-    animation: bg-wave 20s ease-in-out infinite alternate;
 }
 
-@keyframes bg-wave {
-    0% {
-        transform: translate(0, 0) scale(0.97);
-    }
-
-    100% {
-        transform: translate(-10px, 8px) scale(1);
-    }
-}
+/* Removed bg-wave keyframes */
 
 #app {
     display: flex;
@@ -95,6 +91,7 @@ body {
     align-items: center;
     max-width: 1400px;
     margin: 0 auto;
+    user-select: none;
 }
 
 .game-logo {
@@ -137,7 +134,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, pointer;
     transition: all 0.2s;
     font-size: 1.2rem;
 }
@@ -196,6 +193,8 @@ body {
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
+    position: relative;
+    z-index: 10;
 }
 
 .player-separator {
@@ -223,22 +222,22 @@ body {
 }
 
 .central-attack {
-    width: 50px;
-    height: 50px;
+    width: 65px;
+    height: 65px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(20, 22, 30, 0.95);
-    backdrop-filter: blur(12px);
+    background: #0a093a !important;
     border: 2px solid var(--accent-red);
-    box-shadow: 0 0 15px rgba(255, 62, 62, 0.4);
+    box-shadow: 0 0 15px rgb(149, 160, 212);
     z-index: 10;
     color: white;
     font-weight: 800;
     font-size: 1.2rem;
     gap: 0.3rem;
     position: relative;
+    user-select: none;
 }
 
 .central-attack .icon {
@@ -285,6 +284,7 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    user-select: none;
 }
 
 /* Hide resource row if stats bar gets too small */
@@ -323,7 +323,7 @@ body {
     gap: 0.4rem;
     font-size: 1rem;
     font-weight: 700;
-    cursor: default;
+    cursor: url('assets/UI/cursor.svg') 5 5, default;
     user-select: none;
 }
 
@@ -408,7 +408,7 @@ body {
     display: flex;
     flex-direction: column;
     padding: 0;
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto !important;
     transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s, border-color 0.3s;
     overflow: hidden;
     z-index: 1;
@@ -421,6 +421,7 @@ body {
    but for the 'block' feel we want the column to be the boss */
 .unit-column .unit-card {
     pointer-events: auto;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto !important;
 }
 
 /* Cards within column stack with overlap */
@@ -477,6 +478,21 @@ body {
     border-color: var(--accent-green);
 }
 
+.unit-card.lethal-target {
+    box-shadow: 0 0 15px var(--accent-red) !important;
+    border-color: var(--accent-red) !important;
+}
+
+.unit-card.lethal-target:hover,
+.unit-card.lethal-target.column-focus {
+    box-shadow: 0 0 30px var(--accent-red) !important;
+    border-color: var(--accent-red) !important;
+}
+
+.unit-card.exhausted.lethal-target {
+    filter: sepia(1) saturate(5) hue-rotate(-50deg) brightness(1.2) !important;
+}
+
 /* Handled later in file */
 
 .unit-card.exhausted:hover {
@@ -506,7 +522,7 @@ body {
     display: flex;
     flex-direction: column;
     padding: 0;
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto !important;
     /* Explicitly NO transition on transform to make rotation snappy */
     transition: box-shadow 0.2s, border-color 0.2s;
     overflow: hidden;
@@ -571,7 +587,7 @@ body {
 }
 
 .unit-card[onclick] {
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto !important;
 }
 
 .unit-card[onclick]:hover {
@@ -768,7 +784,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
     transition: all 0.2s;
     z-index: 1001;
     /* Stay above the expanded log */
@@ -806,6 +822,7 @@ body {
     justify-content: space-between;
     align-items: center;
     position: relative;
+    z-index: 10;
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: var(--glass-blur);
 }
@@ -836,7 +853,7 @@ body {
     font-weight: 800;
     border-radius: var(--radius-lg);
     border: none;
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
     transition: all 0.2s;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -941,6 +958,7 @@ body {
     padding: 2rem;
     border-radius: var(--radius-lg);
     border: 1px solid var(--glass-border);
+    position: relative;
 }
 
 .modal-header {
@@ -965,7 +983,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
     transition: all 0.2s;
     line-height: 1;
 }
@@ -992,16 +1010,20 @@ body {
     background: rgba(255, 255, 255, 0.05);
     border-radius: var(--radius-sm);
     border: 1px solid var(--glass-border);
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto !important;
     transition: all 0.2s;
-    position: relative;
     font-weight: 700;
 }
 
 .shop-list-item:hover {
     background: var(--accent-primary);
     color: black;
-    transform: translateX(10px);
+    margin-left: 10px;
+}
+
+.shop-list-item.disabled .shop-item-info,
+.shop-list-item.disabled .shop-preview img {
+    filter: grayscale(1);
 }
 
 .shop-item-info {
@@ -1047,8 +1069,9 @@ body {
 
 .shop-preview {
     position: absolute;
-    left: 105%;
-    top: -50px;
+    left: calc(100% + 20px);
+    top: 50%;
+    transform: translateY(-50%);
     width: 200px;
     height: 250px;
     background: #1a1c26;
@@ -1148,9 +1171,8 @@ body {
     padding: 1.5rem 3rem;
     font-size: 1.2rem;
     font-weight: 800;
-    border-radius: var(--radius-lg);
     border: 2px solid transparent;
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
     transition: all 0.3s;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -1210,7 +1232,7 @@ body {
     background: var(--glass-bg);
     border: 2px solid var(--glass-border);
     border-radius: var(--radius-md);
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
     transition: all 0.3s;
     display: flex;
     flex-direction: column;
@@ -1271,7 +1293,7 @@ body {
 
 .setting-item input[type="range"] {
     accent-color: var(--accent-primary);
-    cursor: pointer;
+    cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
 }
 
 .settings-actions {
@@ -1360,4 +1382,24 @@ body {
     animation: shakeError 0.4s cubic-bezier(.36, .07, .19, .97) both;
     border-color: var(--accent-red) !important;
     box-shadow: 0 0 15px var(--accent-red) !important;
+}
+
+@keyframes errorBump {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.3);
+        color: var(--accent-red);
+        text-shadow: 0 0 10px var(--accent-red);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.error-bump {
+    animation: errorBump 0.6s ease-out;
 }

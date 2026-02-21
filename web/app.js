@@ -360,47 +360,15 @@ class PrismataWeb {
     }
 
     updateCentralAttack() {
+        const combat = this.state.combat;
         const p1Atk = this.state.p1?.atk || 0;
         const p2Atk = this.state.p2?.atk || 0;
         let displayVal = Math.max(p1Atk, p2Atk);
 
         // Logic for phases
-        if (this.state.phase === 'Defense') {
-            // Show unblocked damage
-            // In Defense, the active player is the DEFENDER.
-            // But the attack value comes from the ATTACKER (inactive player).
-            // We want to show (Attacker Atk) - (Defender Block).
-            // However, `data.atk` is usually current player's accumulated attack.
-            // We need `combat.atk` which is locked in for combat phase.
-            // But combat object might not be fully populated until end of turn?
-            // Actually, pyodide state should have combat info if in Defense.
-
-            // Wait, let's use the simple heuristic:
-            // If p1 is defending, p2 is attacking. Incoming = p2Atk.
-            // But combat calculation is better if available.
-            // Let's assume `p1Atk` / `p2Atk` reflects current board state.
-
-            // During defense, blockers generate `blk`.
-            // We want to show: Incoming Atk - Current Block.
-
-            // Let's use `updateUI` logic:
-            // The user says "resource attack div... should decrement".
-
-            // Where to get Block value?
-            // Block is sum of blocking units block value.
-            const p1Blk = this.state.p1.units.reduce((sum, u) => sum + (u.blocking ? u.blk : 0), 0);
-            const p2Blk = this.state.p2.units.reduce((sum, u) => sum + (u.blocking ? u.blk : 0), 0);
-
-            if (this.state.currentPlayer === this.state.p1.name) {
-                // P1 is defending against P2
-                displayVal = Math.max(0, p2Atk - p1Blk);
-            } else {
-                // P2 is defending against P1
-                displayVal = Math.max(0, p1Atk - p2Blk);
-            }
-
-        } else if (this.state.phase === 'Assignment') {
-            const combat = this.state.combat;
+        if (this.state.phase === 'Block' && combat) {
+            displayVal = Math.max(0, combat.atk - combat.blk);
+        } else if (this.state.phase === 'Breach' && combat) {
             displayVal = Math.max(0, combat.atk - combat.blk - combat.assigned);
         }
 
@@ -412,7 +380,7 @@ class PrismataWeb {
                 atkEl.parentElement.style.opacity = '1';
                 atkEl.parentElement.style.borderColor = 'var(--accent-red)';
             } else {
-                atkEl.parentElement.style.opacity = '0.5';
+                atkEl.parentElement.style.opacity = '1';
                 atkEl.parentElement.style.borderColor = 'var(--glass-border)';
             }
         }
@@ -520,9 +488,9 @@ class PrismataWeb {
                     const combat = this.state.combat;
                     const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
                     if (unit.hp <= remaining) {
-                        overlayHtml = '<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255, 68, 68, 0.7);color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:1.2rem;z-index:20;text-shadow: 0 2px 4px black;">LETHAL</div>';
-                    } else {
-                        overlayHtml = `<div class="safe-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);color:#aaa;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:1rem;z-index:20;">MISS ${unit.hp}</div>`;
+                        const rotateFix = isExhausted ? 'transform: rotate(-90deg);' : '';
+                        overlayHtml = `<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255, 68, 68, 0.4);color:white;display:flex;align-items:center;justify-content:center;z-index:20;text-shadow: 0 0 10px black;pointer-events:none;user-select:none;"><span style="${rotateFix} display:flex;flex-direction:column;align-items:center;"><span style="font-size:3rem;line-height:1;">💔</span><span style="font-size:1.5rem;font-weight:bold;margin-top:-5px;text-shadow:0 2px 4px black;">${unit.hp}HP</span></span></div>`;
+                        card.classList.add('lethal-target');
                     }
                 }
 
@@ -694,6 +662,9 @@ class PrismataWeb {
                                     engine.prepared_squad.append(target_unit)
                                     game.current_player.energy -= target_unit.attack_cost
                                     target_unit.exhausted = True
+                                    if target_unit.name == "Volatile":
+                                        target_unit.take_damage(99)
+                                        game.current_player.remove_dead_units()
                                     game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
                                     success = True
                                     msg = f"Prepared {target_unit.name} for attack"
@@ -724,6 +695,14 @@ class PrismataWeb {
                 } else {
                     this.log(`Error: ${result.msg}`, 'important');
                     this.sounds.play('ERROR');
+
+                    if (result.msg.includes("energy")) {
+                        const energyEl = document.getElementById(isP1Turn ? 'p1-energy' : 'p2-energy');
+                        if (energyEl && energyEl.parentElement) {
+                            energyEl.parentElement.classList.add('error-bump');
+                            setTimeout(() => energyEl.parentElement.classList.remove('error-bump'), 600);
+                        }
+                    }
                 }
                 this.syncState();
                 this.updateUI();
@@ -1183,6 +1162,15 @@ class PrismataWeb {
         } else {
             this.log(result[1], 'important');
             this.sounds.play('ERROR');
+
+            if (result[1].includes("energy")) {
+                const isP1Turn = this.state.currentPlayer === this.state.p1.name;
+                const energyEl = document.getElementById(isP1Turn ? 'p1-energy' : 'p2-energy');
+                if (energyEl && energyEl.parentElement) {
+                    energyEl.parentElement.classList.add('error-bump');
+                    setTimeout(() => energyEl.parentElement.classList.remove('error-bump'), 600);
+                }
+            }
             return false;
         }
     }
@@ -1218,8 +1206,8 @@ class PrismataWeb {
             { id: 'striker', name: 'Striker', cost: 3, energyCost: 0, desc: 'Strong attacker, cannot block' },
             { id: 'guard', name: 'Guard', cost: 3, energyCost: 0, desc: 'Basic unit.' },
             { id: 'wall', name: 'Wall', cost: 3, energyCost: 0, desc: 'Instant blocker.' },
-            { id: 'overcharger', name: 'Repeater', cost: 3, energyCost: 1, desc: 'Unexhausts activated unit' },
-            { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 2, desc: 'Burst attack' }
+            { id: 'overcharger', name: 'Repeater', cost: 3, energyCost: 0, desc: 'Unexhausts activated unit' },
+            { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 0, desc: 'Burst attack' }
         ];
 
         // Sort by cost ascending
@@ -1260,15 +1248,23 @@ class PrismataWeb {
             if (!affordable) {
                 item.classList.add('disabled');
                 item.style.opacity = '0.5';
-                item.style.pointerEvents = 'none'; // Prevent clicks
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    this.sounds.play('ERROR');
+                };
             } else {
-                item.style.cursor = 'pointer';
+                item.style.cursor = `url('assets/UI/cursor-pointer.svg') 5 5, auto !important`;
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    // Double check in case UI is stale, but backend handles it too
+                    this.buyUnit(u.id);
+                };
             }
 
             const imgUrl = this.unitImages[u.id];
 
             // Build cost display
-            let costDisplay = `${u.cost}💰`;
+            let costDisplay = `${u.cost}🪙`;
             if (unitEnergyCost > 0) {
                 costDisplay += ` ${unitEnergyCost}⚡`;
             }
@@ -1290,13 +1286,6 @@ class PrismataWeb {
                 </div>
             `;
 
-            if (affordable) {
-                item.onclick = (e) => {
-                    e.stopPropagation();
-                    // Double check in case UI is stale, but backend handles it too
-                    this.buyUnit(u.id);
-                };
-            }
             this.elements.shopGrid.appendChild(item);
         });
 
@@ -1374,6 +1363,7 @@ class PrismataWeb {
         if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
 
         this.hoverTimeout = setTimeout(() => {
+            this.sounds.play('HOVER');
             this.updateUnitPreview(unit);
 
             // Positioning Logic: Prevent tooltip overlapping units on the right side
@@ -1473,11 +1463,45 @@ class PrismataWeb {
             this.handleEndTurn();
         };
         this.elements.btnBuy.onclick = () => {
-            this.sounds.play('CLICK');
             this.handleBuy();
         };
 
-        // Global Event Delegation for Menu Buttons (Robustness Fix)
+        // Global visual click effect and sound
+        document.body.addEventListener('click', (e) => {
+            // Only play generic click if it's not a button or clickable card
+            const isInteractable = e.target.closest('button') || e.target.closest('.close-btn') || e.target.closest('.unit-card');
+
+            if (!isInteractable) {
+                this.sounds.play('CLICK');
+
+                // Create Ripple Effect
+                const ripple = document.createElement('div');
+                ripple.className = 'click-ripple';
+                ripple.style.left = `${e.clientX}px`;
+                ripple.style.top = `${e.clientY}px`;
+                document.body.appendChild(ripple);
+
+                // Play particles
+                for (let i = 0; i < 5; i++) {
+                    const particle = document.createElement('div');
+                    particle.className = 'click-particle';
+                    particle.style.left = `${e.clientX}px`;
+                    particle.style.top = `${e.clientY}px`;
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = 20 + Math.random() * 30;
+                    particle.style.setProperty('--tx', `${Math.cos(angle) * distance}px`);
+                    particle.style.setProperty('--ty', `${Math.sin(angle) * distance}px`);
+                    document.body.appendChild(particle);
+                    setTimeout(() => particle.remove(), 600);
+                }
+
+                setTimeout(() => {
+                    ripple.remove();
+                }, 600);
+            }
+        });
+
+        // Existing logic
         document.body.addEventListener('click', (e) => {
             const target = e.target.closest('button');
             if (!target) return;
@@ -1493,6 +1517,19 @@ class PrismataWeb {
                 this.selectedAI = 'Human';
                 this.elements.welcomeScreen.classList.add('hidden');
                 this.startGame();
+            }
+        });
+
+        // Hover Sounds for Buttons and Shop Items
+        document.body.addEventListener('mouseover', (e) => {
+            const target = e.target;
+            const validHover = target.closest('button') || target.closest('.close-btn') || target.closest('.shop-list-item');
+            if (validHover && !validHover._hasHovered) {
+                validHover._hasHovered = true;
+                this.sounds.play('HOVER');
+                validHover.addEventListener('mouseleave', () => {
+                    validHover._hasHovered = false;
+                }, { once: true });
             }
         });
 
@@ -1583,7 +1620,8 @@ class SoundManager {
             'ERROR': 'error.mp3',
             'VICTORY': 'victory.mp3',
             'DEFEAT': 'defeat.mp3',
-            'SHOP_OPEN': 'shop_open.mp3'
+            'SHOP_OPEN': 'shop_open.wav',
+            'HOVER': 'hover_short.mp3'
         };
 
         this.bgMusic = null;
