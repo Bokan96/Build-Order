@@ -1468,8 +1468,14 @@ class PrismataWeb {
 
     bindEvents() {
         // Main Game Buttons
-        this.elements.btnEnd.onclick = () => this.handleEndTurn();
-        this.elements.btnBuy.onclick = () => this.handleBuy();
+        this.elements.btnEnd.onclick = () => {
+            this.sounds.play('CLICK');
+            this.handleEndTurn();
+        };
+        this.elements.btnBuy.onclick = () => {
+            this.sounds.play('CLICK');
+            this.handleBuy();
+        };
 
         // Global Event Delegation for Menu Buttons (Robustness Fix)
         document.body.addEventListener('click', (e) => {
@@ -1492,6 +1498,7 @@ class PrismataWeb {
 
         // Initialize Log Toggle
         this.elements.btnLogToggle.onclick = () => {
+            this.sounds.play('CLICK');
             if (!this.elements.combatLogWrapper) return;
             this.elements.combatLog.classList.toggle('expanded');
             const isExpanded = this.elements.combatLog.classList.contains('expanded');
@@ -1501,20 +1508,28 @@ class PrismataWeb {
         // Initialize Modals - Close Button
         const closeBtns = document.querySelectorAll('.close-btn');
         closeBtns.forEach(btn => {
-            btn.onclick = () => this.hideShop();
+            btn.onclick = () => {
+                this.sounds.play('CLICK');
+                this.hideShop();
+            };
         });
 
         // Close modal on outside click
         this.elements.shopModal.onclick = (e) => {
-            if (e.target === this.elements.shopModal) this.hideShop();
+            if (e.target === this.elements.shopModal) {
+                this.sounds.play('CLICK');
+                this.hideShop();
+            }
         };
 
         // Settings
         this.elements.btnSettings.onclick = () => {
+            this.sounds.play('CLICK');
             this.elements.settingsModal.classList.remove('hidden');
         };
 
         this.elements.closeSettings.onclick = () => {
+            this.sounds.play('CLICK');
             this.elements.settingsModal.classList.add('hidden');
         };
 

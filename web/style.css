@@ -42,11 +42,29 @@ body {
     width: 100vw;
 }
 
-.dark-theme {
+.dark-theme::before {
+    content: '';
+    position: absolute;
+    top: -50px;
+    left: -50px;
+    right: -50px;
+    bottom: -50px;
     background: url('assets/UI/battlefield_bg.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    z-index: -1;
+    animation: bg-wave 15s ease-in-out infinite alternate;
+}
+
+@keyframes bg-wave {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    100% {
+        transform: translate(-20px, 15px) scale(1.05);
+    }
 }
 
 #app {
@@ -211,8 +229,6 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(20, 22, 30, 0.9);
-    /* Dark background */
     border: 2px solid var(--accent-red);
     box-shadow: 0 0 15px rgba(255, 62, 62, 0.4);
     z-index: 10;
@@ -352,6 +368,10 @@ body {
     /* Scroll vertically if many rows */
     overflow-x: hidden;
     align-items: flex-start;
+}
+
+#p1-units {
+    flex-direction: row-reverse;
 }
 
 /* Unit Column - Each column holds units of one type */
