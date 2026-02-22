@@ -173,7 +173,7 @@
         <div id="shop-modal" class="modal hidden">
             <div class="modal-content glass">
                 <div class="modal-header">
-                    <h2>UNIT SHOP</h2>
+                    <h2>SHOP</h2>
                     <button class="close-btn">&times;</button>
                 </div>
                 <div id="shop-grid" class="shop-grid">
@@ -201,6 +201,55 @@
                         <button id="btn-restart-game" class="menu-btn danger">RESTART GAME</button>
                         <button id="btn-exit-menu" class="menu-btn secondary" style="margin-top: 10px;">EXIT TO MAIN
                             MENU</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="endgame-modal" class="modal hidden">
+            <div class="modal-content glass settings-content" style="text-align: center;">
+                <div class="modal-header" style="justify-content: center;">
+                    <h2>GAME OVER</h2>
+                </div>
+                <div class="settings-body" style="align-items: center; gap: 1.5rem;">
+                    <div id="endgame-winner"
+                        style="font-size: 2rem; color: var(--accent-primary); font-weight: bold; margin-bottom: 20px;">
+                        Winner: Player 1</div>
+
+                    <div class="endgame-stats"
+                        style="display: flex; gap: 2rem; justify-content: center; width: 100%; flex-wrap: wrap; margin-bottom: 20px;">
+                        <div class="stat-box glass"
+                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px;">
+                            <div style="color: var(--text-dim); font-size: 0.9rem;">TURNS TAKEN</div>
+                            <div id="endgame-turns"
+                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-secondary);">0</div>
+                        </div>
+                        <div class="stat-box glass"
+                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px;">
+                            <div style="color: var(--text-dim); font-size: 0.9rem;">WINNER UNITS BOUGHT</div>
+                            <div id="endgame-units"
+                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-green);">0</div>
+                        </div>
+                    </div>
+
+                    <div class="endgame-stats"
+                        style="display: flex; gap: 2rem; justify-content: center; width: 100%; flex-wrap: wrap; margin-bottom: 20px;">
+                        <div class="stat-box glass"
+                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px;">
+                            <div style="color: var(--text-dim); font-size: 0.9rem;">WINNER END GOLD</div>
+                            <div id="endgame-gold"
+                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-secondary);">0</div>
+                        </div>
+                        <div class="stat-box glass"
+                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px;">
+                            <div style="color: var(--text-dim); font-size: 0.9rem;">WINNER END ENERGY</div>
+                            <div id="endgame-energy"
+                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-primary);">0</div>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button id="btn-endgame-main-menu" class="menu-btn primary">RETURN TO MAIN MENU</button>
                     </div>
                 </div>
             </div>

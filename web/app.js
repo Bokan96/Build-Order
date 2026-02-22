@@ -36,7 +36,14 @@ class PrismataWeb {
             btnRestart: document.getElementById('btn-restart-game'),
             sliderMusic: document.getElementById('volume-music'),
             sliderSFX: document.getElementById('volume-sfx'),
-            unitPreview: document.getElementById('unit-preview')
+            unitPreview: document.getElementById('unit-preview'),
+            endgameModal: document.getElementById('endgame-modal'),
+            endgameWinner: document.getElementById('endgame-winner'),
+            endgameTurns: document.getElementById('endgame-turns'),
+            endgameUnits: document.getElementById('endgame-units'),
+            endgameGold: document.getElementById('endgame-gold'),
+            endgameEnergy: document.getElementById('endgame-energy'),
+            btnEndgameMenu: document.getElementById('btn-endgame-main-menu')
         };
 
         this.hoverTimeout = null;
@@ -285,9 +292,8 @@ class PrismataWeb {
         if (!this.state) return;
 
         if (this.state.gameOver) {
-            alert(`GAME OVER! Winner: ${this.state.winner}`);
             this.state.gameOver = false; // Prevent logic loop or manage appropriately
-            // Ideally strictly disable inputs here
+            this.showEndGameScreen();
         }
 
         // Update Header
@@ -489,7 +495,7 @@ class PrismataWeb {
                     const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
                     if (unit.hp <= remaining) {
                         const rotateFix = isExhausted ? 'transform: rotate(-90deg);' : '';
-                        overlayHtml = `<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255, 68, 68, 0.4);color:white;display:flex;align-items:center;justify-content:center;z-index:20;text-shadow: 0 0 10px black;pointer-events:none;user-select:none;"><span style="${rotateFix} display:flex;flex-direction:column;align-items:center;"><span style="font-size:3rem;line-height:1;">💔</span><span style="font-size:1.5rem;font-weight:bold;margin-top:-5px;text-shadow:0 2px 4px black;">${unit.hp}HP</span></span></div>`;
+                        overlayHtml = `<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255, 68, 68, 0.4);color:white;display:flex;align-items:center;justify-content:center;z-index:20;text-shadow: 0 0 10px black;pointer-events:none;user-select:none;"><span style="${rotateFix} display:flex;flex-direction:column;align-items:center;"><span style="font-size:3rem;line-height:1;">💔</span><span style="font-size:1.5rem;font-weight:bold;margin-top:-5px;text-shadow:0 2px 4px black;">${unit.hp}</span></span></div>`;
                         card.classList.add('lethal-target');
                     }
                 }
@@ -1137,9 +1143,9 @@ class PrismataWeb {
         if (result.success) {
             this.log(`Bought ${type}: ${result.msg}`, 'player1');
             this.sounds.play('BUY');
-            this.hideShop();
             this.syncState();
             this.updateUI();
+            this.hideShop();
         } else {
             this.sounds.play('ERROR');
             this.log(`Error: ${result.msg}`, 'important');
@@ -1234,15 +1240,23 @@ class PrismataWeb {
             let affordable = true;
             let reason = "";
 
-            if (unitsBought >= 2) {
+            let limitMax = u.id === 'wall' ? 3 : 5;
+            let currentAmount = 0;
+            if (player && player.lifetime && player.lifetime[u.id]) {
+                currentAmount = player.lifetime[u.id];
+            }
+
+            if (currentAmount >= limitMax) {
                 affordable = false;
-                reason = "Max 2 units";
+                reason = "Max limit reached";
+                // Optionally gray out more aggressively, but existing disabled styles should handle it.
+            } else if (unitsBought >= 2) {
+                affordable = false;
+                reason = "Max 2 units per turn";
             } else if (currentGold < u.cost) {
                 affordable = false;
-                reason = "Need Gold";
             } else if (currentEnergy < totalEnergyReq) {
                 affordable = false;
-                reason = "Need Energy";
             }
 
             if (!affordable) {
@@ -1269,18 +1283,32 @@ class PrismataWeb {
                 costDisplay += ` ${unitEnergyCost}⚡`;
             }
             if (penalty > 0) {
-                costDisplay += ` ${penalty}⚡`;
+                costDisplay += ` <span class="penalty">+${penalty}⚡</span>`;
             }
+
+            // Build progress bar segments based on limit
+            let progressHtml = '<div class="shop-item-progress-bar" title="Purchase Limit">';
+            let availableUnits = Math.max(0, limitMax - currentAmount);
+            for (let i = 0; i < limitMax; i++) {
+                // To fill from right to left, we apply 'filled' to the LAST N slots,
+                // where N is 'availableUnits'.
+                // If limitMax=5, available=2, we want grey, grey, grey, blue, blue.
+                // So index 0,1,2 = not filled. Index 3,4 = filled.
+                let filledClass = i >= (limitMax - availableUnits) ? 'filled' : '';
+                progressHtml += `<div class="progress-segment ${filledClass}"></div>`;
+            }
+            progressHtml += '</div>';
 
             item.innerHTML = `
                 <div class="shop-item-info">
                    <div class="shop-item-main">
                       <span class="unit-cost">${costDisplay}</span>
                       <span class="unit-name">${u.name}</span>
-                       ${!affordable ? `<span class="unit-xs-reason">${reason}</span>` : ''}
+                       ${!affordable && reason ? `<span class="unit-xs-reason">${reason}</span>` : ''}
                    </div>
                    <div class="shop-item-desc">${u.desc}</div>
                 </div>
+                ${progressHtml}
                 <div class="shop-preview">
                     <img src="${imgUrl}" alt="${u.name}">
                 </div>
@@ -1291,6 +1319,25 @@ class PrismataWeb {
 
         this.sounds.play('SHOP_OPEN');
         this.elements.shopModal.classList.remove('hidden');
+
+        let container = this.elements.shopModal.querySelector('.modal-content');
+        if (container) {
+            container.classList.remove('shop-modal-close-anim');
+            container.classList.add('shop-modal-open-anim');
+        }
+    }
+
+    hideShop() {
+        let container = this.elements.shopModal.querySelector('.modal-content');
+        if (container) {
+            container.classList.remove('shop-modal-open-anim');
+            container.classList.add('shop-modal-close-anim');
+            setTimeout(() => {
+                this.elements.shopModal.classList.add('hidden');
+            }, 200);
+        } else {
+            this.elements.shopModal.classList.add('hidden');
+        }
     }
 
     async runAIActionPhase() {
@@ -1313,12 +1360,12 @@ class PrismataWeb {
                 
                 # Start player's turn
                 engine.start_phase()
-                engine.defense_phase()
+                engine.block_phase()
                 
                 res_msg = ""
-                if game.phase == "Defense":
+                if game.phase == "Block":
                     total_atk = sum(u.attack for u in engine.attacking_units)
-                    res_msg = f"INCOMING: ${total_atk}"
+                    res_msg = f"INCOMING: {total_atk}"
                 else:
                     engine.action_phase()
                 
@@ -1595,6 +1642,42 @@ class PrismataWeb {
         this.elements.sliderSFX.oninput = (e) => {
             this.sounds.setSFXVolume(e.target.value / 100);
         };
+
+        if (this.elements.btnEndgameMenu) {
+            this.elements.btnEndgameMenu.onclick = () => {
+                this.sounds.play('CLICK');
+                this.elements.endgameModal.classList.add('hidden');
+                this.elements.app.classList.add('hidden');
+                this.elements.welcomeScreen.classList.remove('hidden');
+                this.log("Exited to Main Menu", "system");
+            };
+        }
+    }
+
+    showEndGameScreen() {
+        this.sounds.play('VICTORY');
+
+        let winnerName = this.state.winner;
+        let winnerState = winnerName === this.state.p1.name ? this.state.p1 : this.state.p2;
+
+        let startingUnits = 2; // Miner, Energizer
+        if (winnerName === this.state.p2.name) startingUnits = 3; // + Barrier
+
+        let totalAcquired = 0;
+        if (winnerState && winnerState.lifetime) {
+            for (let unitType in winnerState.lifetime) {
+                totalAcquired += winnerState.lifetime[unitType];
+            }
+        }
+        let unitsBought = Math.max(0, totalAcquired - startingUnits);
+
+        if (this.elements.endgameWinner) this.elements.endgameWinner.textContent = `Winner: ${winnerName}`;
+        if (this.elements.endgameTurns) this.elements.endgameTurns.textContent = this.state.turn;
+        if (this.elements.endgameUnits) this.elements.endgameUnits.textContent = unitsBought;
+        if (this.elements.endgameGold) this.elements.endgameGold.textContent = winnerState ? winnerState.gold : 0;
+        if (this.elements.endgameEnergy) this.elements.endgameEnergy.textContent = winnerState ? winnerState.energy : 0;
+
+        if (this.elements.endgameModal) this.elements.endgameModal.classList.remove('hidden');
     }
 }
 

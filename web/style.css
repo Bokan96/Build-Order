@@ -946,10 +946,15 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 200;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .modal.hidden {
-    display: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .modal-content {
@@ -963,13 +968,23 @@ body {
 
 .modal-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     margin-bottom: 1rem;
     border-bottom: 1px solid var(--glass-border);
     padding-bottom: 1rem;
     position: relative;
     z-index: 10;
+}
+
+.modal-header h2 {
+    margin: 0;
+}
+
+.modal-header .close-btn {
+    position: absolute;
+    right: 0;
+    top: -5px;
 }
 
 .close-btn {
@@ -993,6 +1008,38 @@ body {
     color: white;
     border-color: var(--accent-red);
     transform: rotate(90deg);
+}
+
+.shop-modal-open-anim {
+    animation: shop-slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes shop-slide-down {
+    0% {
+        transform: translateY(-80px);
+        opacity: 0;
+    }
+
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.shop-modal-close-anim {
+    animation: shop-slide-up 0.3s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards;
+}
+
+@keyframes shop-slide-up {
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
 }
 
 .shop-grid {
@@ -1096,6 +1143,34 @@ body {
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+.shop-item-progress-bar {
+    display: flex;
+    gap: 3px;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 6px 8px;
+    border-radius: 6px;
+    align-items: center;
+}
+
+.shop-list-item:hover .shop-item-progress-bar {
+    opacity: 1;
+}
+
+.progress-segment {
+    width: 6px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+}
+
+.progress-segment.filled {
+    background: #0077ff;
+    box-shadow: 0 0 5px #0077ff;
 }
 
 /* Menu Screens */
