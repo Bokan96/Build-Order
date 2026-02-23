@@ -1290,11 +1290,7 @@ class PrismataWeb {
             let progressHtml = '<div class="shop-item-progress-bar" title="Purchase Limit">';
             let availableUnits = Math.max(0, limitMax - currentAmount);
             for (let i = 0; i < limitMax; i++) {
-                // To fill from right to left, we apply 'filled' to the LAST N slots,
-                // where N is 'availableUnits'.
-                // If limitMax=5, available=2, we want grey, grey, grey, blue, blue.
-                // So index 0,1,2 = not filled. Index 3,4 = filled.
-                let filledClass = i >= (limitMax - availableUnits) ? 'filled' : '';
+                let filledClass = i < availableUnits ? 'filled' : '';
                 progressHtml += `<div class="progress-segment ${filledClass}"></div>`;
             }
             progressHtml += '</div>';
