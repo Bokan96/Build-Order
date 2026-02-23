@@ -120,7 +120,7 @@ class GameEngine:
             return unit.mine(player)
         elif unit.name == "Energizer":
             return unit.generate(player)
-        elif unit.name == "Overcharger":
+        elif unit.name == "Repeater":
             if target is None:
                 return False, "Overcharge requires a target unit"
             if not target.is_alive():

@@ -150,7 +150,7 @@ class Overcharger(Unit):
     """
     
     def __init__(self):
-        super().__init__("Overcharger", gold_cost=3, energy_cost=0, attack=0, block=1, health=2)
+        super().__init__("Repeater", gold_cost=3, energy_cost=0, attack=0, block=1, health=2)
         
     def overcharge(self, player, target_unit):
         """
@@ -158,7 +158,7 @@ class Overcharger(Unit):
         Returns True if successful, False otherwise.
         """
         if self.exhausted:
-            return False, "This Overcharger is already exhausted"
+            return False, "This Repeater is already exhausted"
         if player.energy < 1:
             return False, "Not enough energy (need 1)"
         if target_unit == self:
@@ -201,7 +201,7 @@ UNIT_TYPES = {
     "striker": Striker,
     "guard": Guard,
     "wall": Wall,
-    "overcharger": Overcharger,
+    "repeater": Overcharger,
     "volatile": Volatile,
     "barrier": Barrier,
 }

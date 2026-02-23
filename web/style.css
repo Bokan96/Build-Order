@@ -341,7 +341,7 @@ body {
 }
 
 .resource.energy {
-    color: var(--accent-primary);
+    color: #30e043;
 }
 
 .resource.attack {
@@ -876,6 +876,17 @@ body {
     margin-left: 1rem;
 }
 
+.action-btn.danger {
+    background: rgba(255, 62, 62, 0.1);
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+}
+
+.action-btn.danger:hover {
+    background: var(--accent-red);
+    color: white;
+}
+
 .action-btn:hover {
     filter: brightness(1.2);
     transform: translateY(-2px);
@@ -1043,8 +1054,8 @@ body {
 }
 
 .shop-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
     margin-top: 1.5rem;
 }
@@ -1052,6 +1063,7 @@ body {
 .shop-list-item {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
     padding: 0.8rem 1.5rem;
     background: rgba(255, 255, 255, 0.05);
@@ -1060,6 +1072,7 @@ body {
     cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto !important;
     transition: all 0.2s;
     font-weight: 700;
+    height: 50px;
 }
 
 .shop-list-item:hover {
@@ -1087,21 +1100,14 @@ body {
 }
 
 .shop-item-desc {
-    font-size: 0.75rem;
-    font-weight: 400;
-    color: var(--text-dim);
-    margin-left: 3.5rem;
-    /* Align with name after cost and penalty */
+    display: none !important;
 }
 
 .penalty {
-    color: var(--accent-primary);
-    font-size: 0.7em;
-    font-weight: 800;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
     margin-left: 4px;
-    background: rgba(0, 242, 255, 0.1);
-    padding: 2px 4px;
-    border-radius: 4px;
 }
 
 .shop-list-item:hover .shop-item-desc {

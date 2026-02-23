@@ -54,8 +54,7 @@ class PrismataWeb {
             'striker': '⚔️',
             'guard': '🛡️',
             'wall': '🧱',
-            'overcharger': '⚡',
-            'repeater': '⚡',
+            'repeater': '🔋',
             'volatile': '🧨',
             'barrier': '🚧'
         };
@@ -66,7 +65,6 @@ class PrismataWeb {
             'striker': 'assets/cards/Striker.webp',
             'guard': 'assets/cards/Guard.webp',
             'wall': 'assets/cards/Wall.webp',
-            'overcharger': 'assets/cards/Repeater.webp',
             'repeater': 'assets/cards/Repeater.webp',
             'volatile': 'assets/cards/Volitile.webp',
             'barrier': 'assets/cards/Barrier.webp'
@@ -229,7 +227,7 @@ class PrismataWeb {
                     priority = {
                         "miner": 1, "energizer": 2, "striker": 3, 
                         "guard": 4, "wall": 5, "volatile": 6, 
-                        "overcharger": 7, "barrier": 8
+                        "repeater": 7, "barrier": 8
                     }
                     sorted_units = sorted(p.units, key=lambda u: priority.get(u.name.lower(), 99))
                     
@@ -418,7 +416,7 @@ class PrismataWeb {
 
         // Group units by type
         const unitsByType = {};
-        const typeOrder = ['miner', 'energizer', 'striker', 'guard', 'wall', 'overcharger', 'volatile', 'barrier'];
+        const typeOrder = ['miner', 'energizer', 'striker', 'guard', 'wall', 'repeater', 'volatile', 'barrier'];
 
         units.forEach(unit => {
             if (!unit.isAlive) return;
@@ -628,7 +626,8 @@ class PrismataWeb {
         try {
             console.log("handleUnitClick", unit.type, unitNumber);
             if (this.targeting) {
-                this.handleTargeting(unit, unitNumber);
+                // If we're in targeting mode, ignore clicks that come through the normal path
+                // (targeting onclick handlers are set up by startTargeting)
                 return;
             }
 
@@ -651,7 +650,7 @@ class PrismataWeb {
                 if (animateCard) animateCard.style.transition = 'none';
             }
             // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
-            if (unit.atk > 0 && unit.type !== 'overcharger') {
+            if (unit.atk > 0 && unit.type !== 'repeater') {
                 // Prepare this specific unit for attack
                 const resultProxy = this.pyodide.runPython(`
                     # Find the actual unit object
@@ -719,8 +718,28 @@ class PrismataWeb {
             if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
                 const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
                 await this.processActionResult(resultProxy, animateCard);
-            } else if (unit.type === 'overcharger') {
-                this.startTargeting(unit, unitNumber, animateCard);
+            } else if (unit.type === 'repeater') {
+                // Check energy from Python state directly to avoid desync
+                const currentPlayerName = this.state.currentPlayer;
+                const pyEnergy = this.pyodide.runPython(`game.current_player.energy`);
+                if (pyEnergy < 1) {
+                    this.log("Not enough energy to use Repeater (needs 1🔋)", "important");
+                    this.sounds.play('ERROR');
+                    const energyEl = document.getElementById(currentPlayerName === this.state.p1.name ? 'p1-energy' : 'p2-energy');
+                    if (energyEl && energyEl.parentElement) {
+                        energyEl.parentElement.classList.add('error-bump');
+                        setTimeout(() => energyEl.parentElement.classList.remove('error-bump'), 600);
+                    }
+                    if (animateCard) {
+                        animateCard.classList.add('shake-animation');
+                        setTimeout(() => animateCard.classList.remove('shake-animation'), 600);
+                    }
+                    // Re-sync JS state in case it was stale
+                    this.syncState();
+                    this.updateUI();
+                } else {
+                    this.startTargeting(unit, unitNumber, animateCard);
+                }
             } else if (unit.type === 'volatile') {
                 // Detonate volatile
                 const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
@@ -732,32 +751,117 @@ class PrismataWeb {
         }
     }
 
-    startTargeting(sourceUnit, sourceNumber) {
-        this.targeting = { sourceUnit, sourceNumber };
+    startTargeting(sourceUnit, sourceNumber, animateCard) {
+        this.targeting = { sourceUnit, sourceNumber, animateCard };
         const currentPlayerName = this.state.currentPlayer;
-        this.log(`Click a friendly unit to overcharge with Overcharger #${sourceNumber}`, 'system');
+        this.log(`Click a friendly unit to unexhaust with Repeater #${sourceNumber}. Click Repeater again to cancel.`, 'system');
 
-        // Temporarily change all current player's cards to targeting mode
+        if (animateCard) {
+            animateCard.style.transform = 'scale(1.1)';
+            animateCard.style.zIndex = '100';
+            animateCard.style.transition = 'transform 0.2s';
+        }
+
         const friendlyArea = currentPlayerName === this.state.p1.name ? this.elements.p1Units : this.elements.p2Units;
-        const friendlyCards = friendlyArea.querySelectorAll('.unit-card');
+        friendlyArea.classList.add('targeting-mode');
+        const columns = friendlyArea.querySelectorAll('.unit-column');
 
-        friendlyCards.forEach((cardEl) => {
-            const originalClass = cardEl.className;
-            cardEl.style.border = '2px solid yellow';
-            cardEl.onclick = (e) => {
-                e.stopPropagation();
-                const targetType = cardEl.dataset.type;
-                const targetNum = cardEl.dataset.unitNumber;
-                this.executeTargetedAbility(targetType, targetNum);
-                // Restore cards
-                this.updateUI();
-            };
+        columns.forEach((columnEl) => {
+            const cards = Array.from(columnEl.querySelectorAll('.unit-card'));
+            if (cards.length === 0) return;
+
+            const colType = cards[0].dataset.type;
+            const isSelfColumn = colType === sourceUnit.type;
+
+            // Find first exhausted card in this column (the target we'll unexhaust)
+            const firstExhausted = cards.find(c => c.classList.contains('exhausted'));
+            const hasExhausted = !!firstExhausted;
+            const firstExhaustedNum = firstExhausted ? firstExhausted.dataset.unitNumber : null;
+
+            // Style each card using outline+filter to avoid fighting CSS !important on box-shadow/border
+            cards.forEach((cardEl) => {
+                const isExhausted = cardEl.classList.contains('exhausted');
+                if (isSelfColumn) {
+                    cardEl.style.outline = '2px solid rgba(255, 68, 68, 0.9)';
+                    cardEl.style.filter = isExhausted
+                        ? 'drop-shadow(0 0 8px rgba(255,0,0,0.7)) grayscale(1) brightness(0.7)'
+                        : 'drop-shadow(0 0 8px rgba(255,0,0,0.7))';
+                } else if (isExhausted) {
+                    cardEl.style.outline = '2px solid rgba(0, 255, 0, 0.9)';
+                    cardEl.style.filter = 'drop-shadow(0 0 10px rgba(0,255,0,0.8)) grayscale(1) brightness(0.85)';
+                } else if (hasExhausted) {
+                    // Non-exhausted card in a valid-target column: soft glow
+                    cardEl.style.outline = '2px solid rgba(0, 255, 0, 0.5)';
+                    cardEl.style.filter = 'drop-shadow(0 0 6px rgba(0,255,0,0.4))';
+                } else {
+                    cardEl.style.opacity = '0.35';
+                }
+            });
+
+            // THE KEY FIX: The top card (last in DOM, highest z-index) intercepts all clicks.
+            // We must override ITS onclick so the targeting action fires, regardless of
+            // whether it's exhausted or not. Without this, stopPropagation on the
+            // interactive card's onclick blocks column-level handlers from ever firing.
+            const topCard = cards[cards.length - 1];
+
+            if (isSelfColumn) {
+                columnEl.style.cursor = 'pointer';
+                // Override top card onclick to cancel
+                topCard.onclick = (e) => {
+                    e.stopPropagation();
+                    this.cancelTargeting();
+                };
+            } else if (hasExhausted) {
+                columnEl.style.cursor = 'pointer';
+                // Override top card onclick to execute ability
+                topCard.onclick = (e) => {
+                    e.stopPropagation();
+                    this.executeTargetedAbility(colType, firstExhaustedNum);
+                };
+                // Column fallback for clicks in the gap between cards
+                columnEl.onclick = (e) => {
+                    e.stopPropagation();
+                    this.executeTargetedAbility(colType, firstExhaustedNum);
+                };
+            } else {
+                columnEl.style.cursor = 'not-allowed';
+                topCard.onclick = (e) => { e.stopPropagation(); };
+            }
         });
+
+        // Add a cancel button in the action bar
+        const mainBtns = document.querySelector('.main-buttons');
+        if (mainBtns && !document.getElementById('btn-cancel-target')) {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.id = 'btn-cancel-target';
+            cancelBtn.className = 'action-btn danger';
+            cancelBtn.textContent = 'CANCEL';
+            cancelBtn.onclick = () => this.cancelTargeting();
+            mainBtns.insertBefore(cancelBtn, mainBtns.firstChild);
+        }
+    }
+
+    cancelTargeting() {
+        if (!this.targeting) return;
+        if (this.targeting.animateCard) {
+            this.targeting.animateCard.style.transform = '';
+            this.targeting.animateCard.style.zIndex = '';
+        }
+        this.targeting = null;
+        // Remove targeting-mode class from both areas (safe to call on both)
+        this.elements.p1Units.classList.remove('targeting-mode');
+        this.elements.p2Units.classList.remove('targeting-mode');
+        this.log('Targeting canceled.', 'system');
+        const cancelBtn = document.getElementById('btn-cancel-target');
+        if (cancelBtn) cancelBtn.remove();
+        this.syncState(); // Re-sync from Python to prevent energy desync
+        this.updateUI(); // Resets styles and onclick handlers
     }
 
     executeTargetedAbility(targetType, targetNumber) {
-        const { sourceUnit, sourceNumber } = this.targeting;
-        this.pyodide.runPython(`
+        if (!this.targeting) return;
+        const { sourceUnit, sourceNumber, animateCard } = this.targeting;
+        const processProxy = this.pyodide.runPython(`
             source_type = "${sourceUnit.type}"
             source_num = ${sourceNumber}
             target_type = "${targetType}"
@@ -766,13 +870,36 @@ class PrismataWeb {
             # Find the actual unit object in python
             target_unit = game.current_player.get_units_by_type(target_type)[int(target_idx)-1]
             success, msg = engine.use_ability(source_type, source_num, target=target_unit)
+            
             {"success": success, "msg": msg}
         `);
 
+        const result = processProxy.toJs({ dict_converter: Object.fromEntries });
+        processProxy.destroy();
+
+        const cancelBtn = document.getElementById('btn-cancel-target');
+        if (cancelBtn) cancelBtn.remove();
         this.targeting = null;
-        this.log(`Overcharged ${targetType} #${targetNumber}`, 'player1');
-        this.sounds.play('ABILITY');
+
+        if (result.success) {
+            if (animateCard) {
+                animateCard.style.transform = '';
+                animateCard.style.zIndex = '';
+                animateCard.classList.add('exhausting-animation');
+            }
+            this.log(`Unexhausted ${targetType} #${targetNumber}`, 'player1');
+            this.sounds.play('ABILITY');
+        } else {
+            if (animateCard) {
+                animateCard.style.transform = '';
+                animateCard.style.zIndex = '';
+            }
+            this.log(result.msg, 'important');
+            this.sounds.play('ERROR');
+        }
+
         this.syncState();
+        this.updateUI();
     }
 
     handleBlock(unit) {
@@ -863,6 +990,11 @@ class PrismataWeb {
 
     async handleEndTurn() {
         console.log("handleEndTurn called - Current Player:", this.state?.currentPlayer, "Phase:", this.state?.phase, "GameMode:", this.gameMode);
+
+        // Cancel targeting if active
+        if (this.targeting) {
+            this.cancelTargeting();
+        }
 
         // Prevent double-clicking
         if (this.processingTurn) return;
@@ -1212,7 +1344,7 @@ class PrismataWeb {
             { id: 'striker', name: 'Striker', cost: 3, energyCost: 0, desc: 'Strong attacker, cannot block' },
             { id: 'guard', name: 'Guard', cost: 3, energyCost: 0, desc: 'Basic unit.' },
             { id: 'wall', name: 'Wall', cost: 3, energyCost: 0, desc: 'Instant blocker.' },
-            { id: 'overcharger', name: 'Repeater', cost: 3, energyCost: 0, desc: 'Unexhausts activated unit' },
+            { id: 'repeater', name: 'Repeater', cost: 3, energyCost: 0, desc: 'Unexhausts activated unit' },
             { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 0, desc: 'Burst attack' }
         ];
 
@@ -1277,13 +1409,12 @@ class PrismataWeb {
 
             const imgUrl = this.unitImages[u.id];
 
-            // Build cost display
             let costDisplay = `${u.cost}🪙`;
             if (unitEnergyCost > 0) {
-                costDisplay += ` ${unitEnergyCost}⚡`;
+                costDisplay += ` ${unitEnergyCost}🔋`;
             }
             if (penalty > 0) {
-                costDisplay += ` <span class="penalty">+${penalty}⚡</span>`;
+                costDisplay += ` +${penalty}🔋`;
             }
 
             // Build progress bar segments based on limit
@@ -1302,7 +1433,6 @@ class PrismataWeb {
                       <span class="unit-name">${u.name}</span>
                        ${!affordable && reason ? `<span class="unit-xs-reason">${reason}</span>` : ''}
                    </div>
-                   <div class="shop-item-desc">${u.desc}</div>
                 </div>
                 ${progressHtml}
                 <div class="shop-preview">
@@ -1451,7 +1581,6 @@ class PrismataWeb {
             'striker': 'Strong attacker, cannot block',
             'guard': 'Basic unit.',
             'wall': 'Instant blocker.',
-            'overcharger': 'Unexhausts activated unit',
             'repeater': 'Unexhausts activated unit',
             'volatile': 'Burst attack'
         };

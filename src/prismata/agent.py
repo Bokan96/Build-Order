@@ -276,20 +276,20 @@ class Agent:
                     is_threatened = enemy_potential_attack > my_total_block
 
         if strat == "Random" or strat == "Aggressive":
-            others = ["overcharger", "volatile"]
+            others = ["repeater", "volatile"]
             for unit_type in others:
                 units = [u for u in active_player.get_units_by_type(unit_type) if not u.exhausted]
                 for i in range(len(units)):
                     # Aggressive always uses them if it helps breach, Random is 50/50
                     if strat == "Aggressive" or random.random() < 0.5:
-                        if unit_type == "overcharger":
+                        if unit_type == "repeater":
                             # Target the best unit (highest attack or most useful)
                             exhausted = [u for u in active_player.units if u.exhausted and u.is_alive()]
                             if exhausted:
                                 # Prioritize readying Strikers or other offensive units
                                 target = next((u for u in exhausted if u.name == "Striker"), random.choice(exhausted))
                                 engine.use_ability(unit_type, i+1, target=target)
-                                self.log(f"Used Overcharger on {target.name}")
+                                self.log(f"Used Repeater on {target.name}")
                         else:
                             # Other abilities... (Non-volatile now)
                             pass
@@ -326,7 +326,7 @@ class Agent:
                         continue
 
             if random.random() < 0.05:
-                potential_puys = ["miner", "energizer", "striker", "guard", "wall", "overcharger", "volatile", "barrier"]
+                potential_puys = ["miner", "energizer", "striker", "guard", "wall", "repeater", "volatile", "barrier"]
                 unit_name = self.get_economic_target(active_player, random.choice(potential_puys))
                 cap = 3 if unit_name == "wall" else 5
                 if active_player.lifetime_units.get(unit_name, 0) < cap:
@@ -462,7 +462,7 @@ class Agent:
                                 bought_this_step = True
             
             elif strat == "Random":
-                potential_buys = ["miner", "energizer", "striker", "guard", "wall", "overcharger", "volatile"]
+                potential_buys = ["miner", "energizer", "striker", "guard", "wall", "repeater", "volatile"]
                 random.shuffle(potential_buys)
                 for unit_name in potential_buys:
                     cap = 3 if unit_name == "wall" else 5
