@@ -11,14 +11,21 @@ class PrismataWeb {
         this.aiAgent = null;
         this.isLoaded = false;
         this.selectedAI = null;
-        this.gameMode = 'AI'; // 'AI' or 'HOTSEAT'
+        this.gameMode = 'AI'; // 'AI', 'HOTSEAT', or 'ONLINE'
         this.processingTurn = false;
+
+        // Online multiplayer state
+        this.multiplayer = new MultiplayerManager();
+        this.isHost = false;
+        this.isRemoteAction = false; // true when replaying a remote action
 
         // UI Elements
         this.elements = {
             loadingOverlay: document.getElementById('loading-overlay'),
             welcomeScreen: document.getElementById('welcome-screen'),
             aiSelectionScreen: document.getElementById('ai-selection-screen'),
+            onlineLobbyScreen: document.getElementById('online-lobby-screen'),
+            disconnectModal: document.getElementById('disconnect-modal'),
             app: document.getElementById('app'),
             p1Units: document.getElementById('p1-units'),
             p2Units: document.getElementById('p2-units'),
@@ -103,6 +110,237 @@ class PrismataWeb {
         // event listeners are now in bindEvents
     }
 
+    showOnlineLobby() {
+        this.elements.welcomeScreen.classList.add('hidden');
+        this.elements.onlineLobbyScreen.classList.remove('hidden');
+
+        const lobbyChoice = document.getElementById('lobby-choice');
+        const lobbyCreate = document.getElementById('lobby-create');
+        const lobbyJoin = document.getElementById('lobby-join');
+        const lobbyStatus = document.getElementById('lobby-status');
+
+        // Reset to initial state
+        lobbyChoice.classList.remove('hidden');
+        lobbyCreate.classList.add('hidden');
+        lobbyJoin.classList.add('hidden');
+        lobbyStatus.classList.add('hidden');
+        lobbyStatus.className = 'lobby-status hidden';
+
+        const updateStatus = (state, msg) => {
+            lobbyStatus.classList.remove('hidden', 'connecting', 'waiting', 'connected', 'error');
+            lobbyStatus.classList.add(state);
+            lobbyStatus.querySelector('.status-text').textContent = msg;
+        };
+
+        this.multiplayer.onStateChange((state, detail) => {
+            updateStatus(state, detail);
+
+            if (state === 'connected') {
+                // Brief delay, then start game
+                setTimeout(() => {
+                    this.gameMode = 'ONLINE';
+                    this.isHost = this.multiplayer.isHost;
+                    this.selectedAI = null;
+                    this.setupMultiplayerCallbacks();
+                    this.elements.onlineLobbyScreen.classList.add('hidden');
+                    this.startGame();
+                }, 800);
+            }
+        });
+
+        this.multiplayer.onError((msg) => {
+            updateStatus('error', msg);
+        });
+
+        // Create Room
+        document.getElementById('btn-create-room').onclick = async () => {
+            lobbyChoice.classList.add('hidden');
+            lobbyCreate.classList.remove('hidden');
+            this.sounds.play('CLICK');
+
+            try {
+                const code = await this.multiplayer.createRoom();
+                document.getElementById('room-code-text').textContent = code;
+            } catch (e) {
+                console.error('Failed to create room:', e);
+            }
+        };
+
+        // Copy code
+        document.getElementById('btn-copy-code').onclick = () => {
+            const code = document.getElementById('room-code-text').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = document.getElementById('btn-copy-code');
+                btn.textContent = '✅';
+                setTimeout(() => btn.textContent = '📋', 1500);
+            });
+            this.sounds.play('CLICK');
+        };
+
+        // Join Room
+        document.getElementById('btn-join-room').onclick = () => {
+            lobbyChoice.classList.add('hidden');
+            lobbyJoin.classList.remove('hidden');
+            this.sounds.play('CLICK');
+            document.getElementById('join-code-input').focus();
+        };
+
+        // Connect button
+        document.getElementById('btn-connect').onclick = async () => {
+            const code = document.getElementById('join-code-input').value.trim();
+            if (!code) return;
+            this.sounds.play('CLICK');
+
+            try {
+                await this.multiplayer.joinRoom(code);
+            } catch (e) {
+                console.error('Failed to join room:', e);
+            }
+        };
+
+        // Enter key in input
+        document.getElementById('join-code-input').onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('btn-connect').click();
+            }
+        };
+
+        // Back button
+        document.getElementById('btn-back-to-menu-lobby').onclick = () => {
+            this.sounds.play('CLICK');
+            this.multiplayer.disconnect();
+            this.elements.onlineLobbyScreen.classList.add('hidden');
+            this.elements.welcomeScreen.classList.remove('hidden');
+        };
+    }
+
+    setupMultiplayerCallbacks() {
+        this.multiplayer.onAction((action) => {
+            console.log('[Online] Received remote action:', action);
+            this.receiveRemoteAction(action);
+        });
+
+        this.multiplayer.onStateChange((state, detail) => {
+            if (state === 'disconnected' && this.gameMode === 'ONLINE') {
+                // Show disconnect modal
+                if (this.elements.disconnectModal) {
+                    this.elements.disconnectModal.classList.remove('hidden');
+                }
+            }
+        });
+
+        // Disconnect modal button
+        const btnDisconnectMenu = document.getElementById('btn-disconnect-menu');
+        if (btnDisconnectMenu) {
+            btnDisconnectMenu.onclick = () => {
+                this.sounds.play('CLICK');
+                this.elements.disconnectModal.classList.add('hidden');
+                this.multiplayer.disconnect();
+                this.elements.app.classList.add('hidden');
+                this.elements.welcomeScreen.classList.remove('hidden');
+            };
+        }
+    }
+
+    receiveRemoteAction(action) {
+        this.isRemoteAction = true;
+
+        try {
+            switch (action.type) {
+                case 'buy':
+                    // Call engine directly — bypasses shop UI guards
+                    this.pyodide.runPython(`engine.buy_unit("${action.unitType}")`);
+                    this.log(`Opponent bought ${action.unitType}`, 'opponent');
+                    this.syncState();
+                    this.updateUI();
+                    break;
+
+                case 'ability':
+                    if (action.atk > 0 && action.unitType !== 'repeater') {
+                        // Attack preparation — call engine directly
+                        this.pyodide.runPython(`
+                            unit_type = "${action.unitType}"
+                            unit_idx = ${action.unitNumber} - 1
+                            units_of_type = game.current_player.get_units_by_type(unit_type)
+                            if unit_idx < len(units_of_type):
+                                target_unit = units_of_type[unit_idx]
+                                if not target_unit.exhausted and target_unit.is_alive():
+                                    if target_unit not in engine.prepared_squad:
+                                        if game.current_player.energy >= target_unit.attack_cost:
+                                            engine.prepared_squad.append(target_unit)
+                                            game.current_player.energy -= target_unit.attack_cost
+                                            target_unit.exhausted = True
+                                            if target_unit.name == "Volatile":
+                                                target_unit.take_damage(99)
+                                                game.current_player.remove_dead_units()
+                                            game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
+                        `);
+                    } else {
+                        // Resource units (miner, energizer, wall) or volatile
+                        this.pyodide.runPython(`engine.use_ability("${action.unitType}", ${action.unitNumber})`);
+                    }
+                    this.syncState();
+                    this.updateUI();
+                    break;
+
+                case 'block':
+                    // Call engine directly
+                    this.pyodide.runPython(`engine.assign_blockers([("${action.unitType}", 1)])`);
+                    this.syncState();
+                    this.updateUI();
+                    break;
+
+                case 'breach': {
+                    // Call engine directly
+                    const isP1Target = action.isP1Target;
+                    this.pyodide.runPython(`
+                        target_type = "${action.unitType}"
+                        target_num = ${action.unitNumber}
+                        defender_is_p1 = ${isP1Target ? 'True' : 'False'}
+                        defender = game.player1 if defender_is_p1 else game.player2
+                        units = defender.get_units_by_type(target_type)
+                        if 1 <= target_num <= len(units):
+                            target_unit = units[target_num-1]
+                            hp_needed = target_unit.current_health
+                            engine.resolve_combat([(target_type, hp_needed)])
+                    `);
+                    this.syncState();
+
+                    // Check if breach is finished
+                    const combat = this.state.combat;
+                    const remaining = (combat.atk - combat.blk) - combat.assigned;
+                    if (remaining <= 0) {
+                        this.handleEndTurn();
+                    } else {
+                        this.updateUI();
+                    }
+                    break;
+                }
+
+                case 'endTurn':
+                    this.handleEndTurn();
+                    break;
+
+                case 'repeaterTarget':
+                    // Call engine directly with source and target
+                    this.pyodide.runPython(`
+                        target_unit = game.current_player.get_units_by_type("${action.targetType}")[int(${action.targetNumber})-1]
+                        engine.use_ability("repeater", ${action.sourceNumber}, target=target_unit)
+                    `);
+                    this.syncState();
+                    this.updateUI();
+                    break;
+
+                default:
+                    console.warn('[Online] Unknown action type:', action.type);
+            }
+        } catch (e) {
+            console.error('[Online] Error replaying remote action:', e);
+        }
+
+        this.isRemoteAction = false;
+    }
+
     showAISelection() {
         this.elements.aiSelectionScreen.classList.remove('hidden');
 
@@ -122,6 +360,7 @@ class PrismataWeb {
     startGame() {
         this.sounds.startMusic();
         this.elements.aiSelectionScreen.classList.add('hidden');
+        this.elements.onlineLobbyScreen.classList.add('hidden');
         this.updateLoadingText("Starting game engine...");
         this.elements.loadingOverlay.style.display = 'flex';
         this.elements.loadingOverlay.style.opacity = '1';
@@ -141,12 +380,17 @@ class PrismataWeb {
                 // Set body class based on game mode
                 if (this.gameMode === 'AI') {
                     document.body.classList.add('ai-mode');
-                    document.body.classList.remove('hotseat-mode');
+                    document.body.classList.remove('hotseat-mode', 'online-mode');
                     this.log(`Game Initialized. Battling ${this.selectedAI} AI.`, "system");
+                } else if (this.gameMode === 'ONLINE') {
+                    document.body.classList.add('online-mode');
+                    document.body.classList.remove('ai-mode', 'hotseat-mode');
+                    const role = this.isHost ? 'Player 1 (Host)' : 'Player 2 (Guest)';
+                    this.log(`Online game started! You are ${role}.`, "system");
                 } else {
                     document.body.classList.add('hotseat-mode');
-                    document.body.classList.remove('ai-mode');
-                    this.log("Hotseat PvP Mode Started.", "system");
+                    document.body.classList.remove('ai-mode', 'online-mode');
+                    this.log("Local Multiplayer Mode Started.", "system");
                 }
 
                 this.updateUI();
@@ -195,7 +439,7 @@ class PrismataWeb {
     setupGame() {
         // Determine player names based on game mode
         const p1Name = "Player 1";
-        const p2Name = this.gameMode === 'HOTSEAT' ? "Player 2" : "AI";
+        const p2Name = (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') ? "Player 2" : "AI";
         const aiType = this.selectedAI || 'Aggressive';
 
         // Initialize GameState and GameEngine instances in Python
@@ -325,8 +569,22 @@ class PrismataWeb {
 
         // In AI mode, P2 (AI) is never 'friendly' (interactable) for the user
         const isHotseat = this.gameMode === 'HOTSEAT';
-        const p1IsFriendly = isP1Turn;
-        const p2IsFriendly = isHotseat ? !isP1Turn : false;
+        const isOnline = this.gameMode === 'ONLINE';
+        let p1IsFriendly = isP1Turn;
+        let p2IsFriendly = isHotseat ? !isP1Turn : false;
+
+        // In Online mode, only YOUR side is interactive
+        if (isOnline) {
+            if (this.isHost) {
+                p1IsFriendly = isP1Turn;
+                p2IsFriendly = false;
+            } else {
+                p1IsFriendly = false;
+                p2IsFriendly = !isP1Turn;
+            }
+            // During Breach phase, the attacker gets to interact with enemy units
+            // This is handled by the existing canDamageInBreach logic in renderUnits
+        }
 
         this.renderUnits(this.elements.p1Units, this.state.p1.units, p1IsFriendly);
         this.renderUnits(this.elements.p2Units, this.state.p2.units, p2IsFriendly);
@@ -576,6 +834,7 @@ class PrismataWeb {
     updateActionButtons() {
         // In AI mode, we restrict actions to Player 1.
         // In HOTSEAT mode, we allow actions for whoever is the current player.
+        // In ONLINE mode, only the local player's turn is interactive.
 
         let isMyTurn = false;
         const phase = this.state.phase;
@@ -583,6 +842,13 @@ class PrismataWeb {
         if (this.gameMode === 'HOTSEAT') {
             // In Hotseat, it's always "my turn" if I am the active human
             isMyTurn = true;
+        } else if (this.gameMode === 'ONLINE') {
+            // In Online mode, check if it's the local player's turn
+            if (this.isHost) {
+                isMyTurn = this.state.currentPlayer === 'Player 1';
+            } else {
+                isMyTurn = this.state.currentPlayer === 'Player 2';
+            }
         } else {
             // In AI Mode, only Player 1 is human
             isMyTurn = this.state.currentPlayer === "Player 1";
@@ -591,7 +857,7 @@ class PrismataWeb {
         // Special case for Breach: Attacker acts, which might be P1 even if defender is current?
         // Actually engine logic usually switches "currentPlayer" context.
         // But let's keep the loose "Breach" check for safety if legacy logic requires it.
-        const canAct = isMyTurn || (this.gameMode !== 'HOTSEAT' && phase === 'Breach' && this.state.p1.units.some(u => u.attacking));
+        const canAct = isMyTurn || (this.gameMode !== 'HOTSEAT' && this.gameMode !== 'ONLINE' && phase === 'Breach' && this.state.p1.units.some(u => u.attacking));
         // Logic simplification: In Hotseat, canAct is always true effectively
 
         this.elements.btnEnd.disabled = !canAct;
@@ -697,6 +963,11 @@ class PrismataWeb {
                     }
                     this.sounds.play('PREPARE_ATTACK');
                     this.log(`${unit.name} #${unitNumber} prepared to attack!`, 'player1');
+
+                    // Send to remote player
+                    if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                        this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
+                    }
                 } else {
                     this.log(`Error: ${result.msg}`, 'important');
                     this.sounds.play('ERROR');
@@ -717,7 +988,12 @@ class PrismataWeb {
             // Resource generation units (miner, energizer, wall)
             if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
                 const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-                await this.processActionResult(resultProxy, animateCard);
+                const abilitySuccess = await this.processActionResult(resultProxy, animateCard);
+
+                // Send to remote player
+                if (abilitySuccess && this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                    this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
+                }
             } else if (unit.type === 'repeater') {
                 // Check energy from Python state directly to avoid desync
                 const currentPlayerName = this.state.currentPlayer;
@@ -743,7 +1019,12 @@ class PrismataWeb {
             } else if (unit.type === 'volatile') {
                 // Detonate volatile
                 const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
-                await this.processActionResult(resultProxy, animateCard);
+                const volSuccess = await this.processActionResult(resultProxy, animateCard);
+
+                // Send to remote player
+                if (volSuccess && this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                    this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
+                }
             }
         } catch (e) {
             console.error("handleUnitClick error", e);
@@ -889,6 +1170,11 @@ class PrismataWeb {
             }
             this.log(`Unexhausted ${targetType} #${targetNumber}`, 'player1');
             this.sounds.play('ABILITY');
+
+            // Send to remote player
+            if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                this.multiplayer.sendAction({ type: 'repeaterTarget', targetType, targetNumber, sourceNumber });
+            }
         } else {
             if (animateCard) {
                 animateCard.style.transform = '';
@@ -905,6 +1191,11 @@ class PrismataWeb {
     handleBlock(unit) {
         const result = this.pyodide.runPython(`engine.assign_blockers([("${unit.type}", 1)])`);
         this.sounds.play('BLOCK');
+
+        // Send to remote player
+        if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+            this.multiplayer.sendAction({ type: 'block', unitType: unit.type, unitName: unit.name });
+        }
 
         if (unit.type === 'barrier') {
             this.log('Barrier shattered blocking the attack!', 'important');
@@ -958,6 +1249,11 @@ class PrismataWeb {
             this.log(`Destroyed ${unit.name} #${unitNumber}`, 'important');
             this.sounds.play('DESTROY');
 
+            // Send to remote player
+            if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                this.multiplayer.sendAction({ type: 'breach', unitType: unit.type, unitNumber, hp: unit.hp, unitName: unit.name, isP1Target });
+            }
+
             // Re-sync to check if breach is finished
             this.syncState();
 
@@ -1002,6 +1298,11 @@ class PrismataWeb {
         this.elements.btnEnd.disabled = true;
         this.elements.btnBuy.disabled = true;
 
+        // Send to remote player
+        if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+            this.multiplayer.sendAction({ type: 'endTurn' });
+        }
+
         try {
             if (this.state.phase === 'Block') {
                 const defenderName = this.state.currentPlayer;
@@ -1019,8 +1320,8 @@ class PrismataWeb {
                 if (res.game_phase === 'Breach') {
                     // Attacker must assign breach damage
 
-                    // In HOTSEAT mode, let human attacker assign
-                    if (this.gameMode === 'HOTSEAT') {
+                    // In HOTSEAT or ONLINE mode, let human attacker assign
+                    if (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') {
                         this.log("BREACH! Click enemy units to assign damage.", "important");
                         this.syncState();
                         this.updateUI();
@@ -1094,7 +1395,7 @@ class PrismataWeb {
                 this.processingTurn = false;
 
                 // Only run AI action phase if in AI mode
-                if (this.gameMode !== 'HOTSEAT') {
+                if (this.gameMode === 'AI') {
                     setTimeout(() => this.runAIActionPhase(), 100);
                 } else {
                     this.log(`${this.state.currentPlayer}'s turn!`, "system");
@@ -1117,8 +1418,8 @@ class PrismataWeb {
                 this.syncState();
                 this.updateUI();
 
-                // ===== HOTSEAT MODE =====
-                if (this.gameMode === 'HOTSEAT') {
+                // ===== HOTSEAT / ONLINE MODE =====
+                if (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') {
                     if (this.state.phase === 'Block') {
                         // Opponent needs to defend (human player)
                         const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
@@ -1275,6 +1576,12 @@ class PrismataWeb {
         if (result.success) {
             this.log(`Bought ${type}: ${result.msg}`, 'player1');
             this.sounds.play('BUY');
+
+            // Send to remote player
+            if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                this.multiplayer.sendAction({ type: 'buy', unitType: type });
+            }
+
             this.syncState();
             this.updateUI();
             this.hideShop();
@@ -1689,6 +1996,9 @@ class PrismataWeb {
                 this.selectedAI = 'Human';
                 this.elements.welcomeScreen.classList.add('hidden');
                 this.startGame();
+            } else if (target.id === 'btn-online') {
+                console.log("Online Mode Selected via Delegation");
+                this.showOnlineLobby();
             }
         });
 
