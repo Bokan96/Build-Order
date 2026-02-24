@@ -1536,7 +1536,7 @@ class PrismataWeb {
         if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
 
         this.hoverTimeout = setTimeout(() => {
-            this.sounds.play('HOVER');
+            this.sounds.play('UNIT_HOVER');
             this.updateUnitPreview(unit);
 
             // Positioning Logic: Prevent tooltip overlapping units on the right side
@@ -1829,7 +1829,8 @@ class SoundManager {
             'VICTORY': 'victory.mp3',
             'DEFEAT': 'defeat.mp3',
             'SHOP_OPEN': 'shop_open.wav',
-            'HOVER': 'hover_short.mp3'
+            'HOVER': 'hover_short.mp3',
+            'UNIT_HOVER': 'hover.wav'
         };
 
         this.bgMusic = null;

@@ -1099,6 +1099,10 @@ body {
     gap: 1rem;
 }
 
+.unit-cost {
+    white-space: nowrap;
+}
+
 .shop-item-desc {
     display: none !important;
 }
