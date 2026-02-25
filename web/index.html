@@ -236,11 +236,25 @@
         </nav>
 
         <!-- Modals -->
+        <!-- Mobile-only preview card: OUTSIDE modal for position:fixed to work -->
+        <div id="shop-preview-card" class="shop-preview-card hidden">
+            <div class="shop-preview-art"></div>
+            <div class="shop-preview-info">
+                <div class="shop-preview-name"></div>
+                <div class="shop-preview-cost"></div>
+                <div class="shop-preview-desc"></div>
+            </div>
+        </div>
+
         <div id="shop-modal" class="modal hidden">
             <div class="modal-content glass">
                 <div class="modal-header">
                     <h2>SHOP</h2>
-                    <button class="close-btn">&times;</button>
+                    <div class="shop-header-btns">
+                        <button id="btn-shop-buy" class="action-btn accent shop-buy-btn"
+                            style="display:none;">BUY</button>
+                        <button class="close-btn">&times;</button>
+                    </div>
                 </div>
                 <div id="shop-grid" class="shop-grid">
                     <!-- Shop units here -->

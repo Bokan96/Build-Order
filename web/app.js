@@ -67,14 +67,14 @@ class PrismataWeb {
         };
 
         this.unitImages = {
-            'miner': 'assets/cards/Miner.webp',
-            'energizer': 'assets/cards/Energizer.webp',
-            'striker': 'assets/cards/Striker.webp',
-            'guard': 'assets/cards/Guard.webp',
-            'wall': 'assets/cards/Wall.webp',
-            'repeater': 'assets/cards/Repeater.webp',
-            'volatile': 'assets/cards/Volitile.webp',
-            'barrier': 'assets/cards/Barrier.webp'
+            'miner': 'assets/cards/Miner.webp?v=2',
+            'energizer': 'assets/cards/Energizer.webp?v=2',
+            'striker': 'assets/cards/Striker.webp?v=2',
+            'guard': 'assets/cards/Guard.webp?v=2',
+            'wall': 'assets/cards/Wall.webp?v=2',
+            'repeater': 'assets/cards/Repeater.webp?v=2',
+            'volatile': 'assets/cards/Volitile.webp?v=2',
+            'barrier': 'assets/cards/Barrier.webp?v=2'
         };
 
         this.sounds = new SoundManager();
@@ -437,9 +437,18 @@ class PrismataWeb {
     }
 
     setupGame() {
-        // Determine player names based on game mode
-        const p1Name = "Player 1";
-        const p2Name = (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') ? "Player 2" : "AI";
+        // Determine player names based on game mode by picking random names from the list
+        const nameList = [
+            "Bakulinjo", "CatPark", "Boki", "Welstoce",
+            "Agamajstor", "Liskoni", "xxJustJuliaxx",
+            "Maca Gvini", "Prilicki Princ"
+        ];
+
+        // Shuffle the list to get random unique names
+        const shuffledNames = [...nameList].sort(() => 0.5 - Math.random());
+
+        const p1Name = shuffledNames[0];
+        const p2Name = (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') ? shuffledNames[1] : "AI";
         const aiType = this.selectedAI || 'Aggressive';
 
         // Initialize GameState and GameEngine instances in Python
@@ -526,7 +535,7 @@ class PrismataWeb {
         // This ensures proper interaction targeting (Attacker clicks Defender units)
         if (this.state.phase === 'Breach') {
             const defender = this.state.currentPlayer;
-            this.state.currentPlayer = defender === 'Player 1' ? 'Player 2' : 'Player 1';
+            this.state.currentPlayer = defender === this.state.p1.name ? this.state.p2.name : this.state.p1.name;
         }
     }
 
@@ -544,7 +553,7 @@ class PrismataWeb {
         document.getElementById('player-name-display').textContent = this.state.currentPlayer.toUpperCase();
 
         // Update Tab Title
-        const playerShort = this.state.currentPlayer === 'Player 1' ? 'P1' : (this.state.currentPlayer === 'Player 2' ? 'P2' : this.state.currentPlayer);
+        const playerShort = this.state.currentPlayer === this.state.p1.name ? 'P1' : (this.state.currentPlayer === this.state.p2.name ? 'P2' : this.state.currentPlayer);
         const phaseEmojis = {
             'Start': '🏁',
             'Action': '🧭',
@@ -765,6 +774,7 @@ class PrismataWeb {
 
                 // Hover Preview - available for all cards
                 card.addEventListener('mouseenter', (e) => {
+                    if (window.innerWidth <= 768) return; // Disable hover on mobile
                     e.stopPropagation();
                     this.handleUnitMouseEnter(unit, e);
 
@@ -775,10 +785,47 @@ class PrismataWeb {
                 }, { passive: true });
 
                 card.addEventListener('mouseleave', (e) => {
+                    if (window.innerWidth <= 768) return;
                     e.stopPropagation();
                     this.handleUnitMouseLeave();
                     card.classList.remove('column-focus');
                 }, { passive: true });
+
+                // Touch and Hold Preview for Mobile
+                card.addEventListener('touchstart', (e) => {
+                    if (window.innerWidth > 768) return;
+                    if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
+
+                    this.hoverTimeout = setTimeout(() => {
+                        this.sounds.play('UNIT_HOVER');
+                        this.updateUnitPreview(unit);
+                        const preview = this.elements.unitPreview;
+
+                        // Top or bottom depending on touch Y position
+                        if (e.touches && e.touches[0].clientY > window.innerHeight / 2) {
+                            preview.classList.add('mobile-top');
+                            preview.classList.remove('mobile-bottom');
+                        } else {
+                            preview.classList.add('mobile-bottom');
+                            preview.classList.remove('mobile-top');
+                        }
+                        preview.classList.remove('hidden');
+                    }, 700);
+                }, { passive: true });
+
+                const clearTouch = () => {
+                    if (window.innerWidth > 768) return;
+                    if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
+                    this.elements.unitPreview.classList.add('hidden');
+                    // Also clear any column-focus so card is not "stuck" selected
+                    card.classList.remove('column-focus');
+                };
+                card.addEventListener('touchend', clearTouch, { passive: true });
+                card.addEventListener('touchcancel', clearTouch, { passive: true });
+                card.addEventListener('touchmove', clearTouch, { passive: true });
+                card.addEventListener('contextmenu', (e) => {
+                    if (window.innerWidth <= 768) e.preventDefault();
+                });
 
                 // Interaction Logic
                 const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall');
@@ -845,13 +892,13 @@ class PrismataWeb {
         } else if (this.gameMode === 'ONLINE') {
             // In Online mode, check if it's the local player's turn
             if (this.isHost) {
-                isMyTurn = this.state.currentPlayer === 'Player 1';
+                isMyTurn = this.state.currentPlayer === this.state.p1.name;
             } else {
-                isMyTurn = this.state.currentPlayer === 'Player 2';
+                isMyTurn = this.state.currentPlayer === this.state.p2.name;
             }
         } else {
             // In AI Mode, only Player 1 is human
-            isMyTurn = this.state.currentPlayer === "Player 1";
+            isMyTurn = this.state.currentPlayer === this.state.p1.name;
         }
 
         // Special case for Breach: Attacker acts, which might be P1 even if defender is current?
@@ -1306,7 +1353,7 @@ class PrismataWeb {
         try {
             if (this.state.phase === 'Block') {
                 const defenderName = this.state.currentPlayer;
-                const attackerName = defenderName === 'Player 1' ? 'Player 2' : 'Player 1';
+                const attackerName = defenderName === this.state.p1.name ? this.state.p2.name : this.state.p1.name;
 
                 // Defender finished blocking - check for breach using engine
                 const resProxy = this.pyodide.runPython(`
@@ -1332,8 +1379,8 @@ class PrismataWeb {
                     }
 
                     // AI mode logic
-                    if (this.state.currentPlayer === 'Player 1') {
-                        // AI attacked, Player 1 defended, now AI (Attacker) assigns
+                    if (this.state.currentPlayer === this.state.p1.name) {
+                        // AI attacked, P1 defended, now AI (Attacker) assigns
                         this.log("AI is assigning damage...", "system");
                         const aiResProxy = this.pyodide.runPython(`
                             assignments = ai.assign_damage(game, engine, sum(u.attack for u in engine.attacking_units) - sum(u.block for u in engine.blocking_units))
@@ -1671,6 +1718,7 @@ class PrismataWeb {
         shopUnits.forEach(u => {
             const item = document.createElement('div');
             item.className = 'shop-list-item';
+            item.dataset.unitId = u.id; // needed for mobile preview
 
             // Check affordability logic matching python
             const unitEnergyCost = u.energyCost || 0;
@@ -1758,7 +1806,153 @@ class PrismataWeb {
             container.classList.remove('shop-modal-close-anim');
             container.classList.add('shop-modal-open-anim');
         }
-    }
+
+        // --- Mobile: Preview-on-click flow ---
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile) {
+            const previewCard = document.getElementById('shop-preview-card');
+            let selectedUnitId = null;
+            let selectedAffordable = false;
+
+            // Swap action bar: End Turn -> BUY, SHOP -> EXIT SHOP
+            this.elements.btnEnd.style.display = 'none';
+            this.elements.btnBuy.textContent = 'EXIT SHOP';
+            this.elements.btnBuy.onclick = (e) => {
+                e.stopPropagation();
+                this.hideShop();
+            };
+
+            // Add a BUY button where End Turn was
+            let mobileBuyBtn = document.getElementById('mobile-shop-buy');
+            if (!mobileBuyBtn) {
+                mobileBuyBtn = document.createElement('button');
+                mobileBuyBtn.id = 'mobile-shop-buy';
+                mobileBuyBtn.className = 'action-btn accent';
+                mobileBuyBtn.textContent = 'BUY';
+                this.elements.btnEnd.parentNode.appendChild(mobileBuyBtn);
+            }
+            // Use visibility: hidden to reserve space and keep EXIT SHOP on the left
+            mobileBuyBtn.style.display = 'flex';
+            mobileBuyBtn.style.visibility = 'hidden';
+            mobileBuyBtn.disabled = true;
+
+            // Force layout to push buttons apart
+            this.elements.btnBuy.parentNode.style.justifyContent = 'space-between';
+            this.elements.btnBuy.parentNode.style.width = '100%';
+
+            // Reset preview
+            previewCard.classList.add('hidden');
+            previewCard.classList.remove('disabled-preview');
+            document.querySelectorAll('.shop-list-item.selected').forEach(el => el.classList.remove('selected'));
+
+            // Add scroll arrow buttons (up and down)
+            const gridParent = this.elements.shopGrid.parentNode;
+            let scrollArrowUp = gridParent.querySelector('.shop-scroll-arrow.up');
+            if (!scrollArrowUp) {
+                scrollArrowUp = document.createElement('button');
+                scrollArrowUp.className = 'shop-scroll-arrow up';
+                scrollArrowUp.innerHTML = '&#9650;'; // Up arrow
+                gridParent.insertBefore(scrollArrowUp, this.elements.shopGrid);
+            }
+            scrollArrowUp.onclick = () => {
+                this.elements.shopGrid.scrollBy({ top: -100, behavior: 'smooth' });
+            };
+
+            let scrollArrowDown = gridParent.querySelector('.shop-scroll-arrow.down');
+            if (!scrollArrowDown) {
+                scrollArrowDown = document.createElement('button');
+                scrollArrowDown.className = 'shop-scroll-arrow down';
+                scrollArrowDown.innerHTML = '&#9660;'; // Down arrow
+                gridParent.appendChild(scrollArrowDown);
+            }
+            scrollArrowDown.onclick = () => {
+                this.elements.shopGrid.scrollBy({ top: 100, behavior: 'smooth' });
+            };
+
+            // Remove any old non-directional arrows
+            const oldArrow = gridParent.querySelector('.shop-scroll-arrow:not(.up):not(.down)');
+            if (oldArrow) oldArrow.remove();
+
+            // Set up scroll listener to toggle arrows
+            const updateArrows = () => {
+                const grid = this.elements.shopGrid;
+                if (!grid) return;
+
+                // Show up arrow if not at top
+                if (grid.scrollTop > 5) {
+                    scrollArrowUp.classList.remove('arrow-hidden');
+                } else {
+                    scrollArrowUp.classList.add('arrow-hidden');
+                }
+
+                // Show down arrow if not at bottom (+ 2 for fractional rounding)
+                if (grid.scrollTop + grid.clientHeight < grid.scrollHeight - 2) {
+                    scrollArrowDown.classList.remove('arrow-hidden');
+                } else {
+                    scrollArrowDown.classList.add('arrow-hidden');
+                }
+            };
+
+            if (!this.elements.shopGrid._scrollListenerAdded) {
+                this.elements.shopGrid.addEventListener('scroll', updateArrows);
+                this.elements.shopGrid._scrollListenerAdded = true;
+            }
+            // Add small delay to allow DOM render before checking scroll height
+            setTimeout(updateArrows, 10);
+
+            // Wire ALL shop items (including disabled) to preview
+            this.elements.shopGrid.querySelectorAll('.shop-list-item').forEach(item => {
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    // Deselect previous
+                    document.querySelectorAll('.shop-list-item.selected').forEach(el => el.classList.remove('selected'));
+                    item.classList.add('selected');
+                    selectedUnitId = item.dataset.unitId;
+                    selectedAffordable = !item.classList.contains('disabled');
+
+                    // Populate preview card
+                    const u = shopUnits.find(su => su.id === selectedUnitId);
+                    if (u) {
+                        previewCard.querySelector('.shop-preview-art').style.backgroundImage = `url('${this.unitImages[u.id]}')`;
+                        previewCard.querySelector('.shop-preview-name').textContent = u.name;
+                        let costTxt = `${u.cost} 🪙`;
+                        if (u.energyCost > 0) costTxt += ` ${u.energyCost} 🔋`;
+                        previewCard.querySelector('.shop-preview-cost').textContent = costTxt;
+                        previewCard.querySelector('.shop-preview-desc').textContent = u.desc;
+                        previewCard.classList.remove('hidden');
+
+                        // Grey tint for unaffordable
+                        if (!selectedAffordable) {
+                            previewCard.classList.add('disabled-preview');
+                        } else {
+                            previewCard.classList.remove('disabled-preview');
+                        }
+
+                        // Show/enable BUY only if affordable
+                        mobileBuyBtn.style.visibility = 'visible';
+                        if (selectedAffordable) {
+                            mobileBuyBtn.disabled = false;
+                            mobileBuyBtn.textContent = 'BUY';
+                        } else {
+                            mobileBuyBtn.disabled = true;
+                            mobileBuyBtn.textContent = 'BUY';
+                        }
+                    }
+                    this.sounds.play('HOVER');
+                };
+            });
+
+            // BUY button action
+            mobileBuyBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (selectedUnitId && selectedAffordable) {
+                    this.buyUnit(selectedUnitId);
+                } else {
+                    this.sounds.play('ERROR');
+                }
+            };
+        }
+    } // end showShop
 
     hideShop() {
         let container = this.elements.shopModal.querySelector('.modal-content');
@@ -1770,6 +1964,22 @@ class PrismataWeb {
             }, 200);
         } else {
             this.elements.shopModal.classList.add('hidden');
+        }
+
+        // Restore mobile action bar
+        if (window.innerWidth <= 768) {
+            this.elements.btnEnd.style.display = '';
+            this.elements.btnBuy.textContent = 'SHOP';
+            this.elements.btnBuy.onclick = () => { this.handleBuy(); };
+            this.elements.btnBuy.parentNode.style.justifyContent = '';
+            this.elements.btnBuy.parentNode.style.width = '';
+            const mobileBuyBtn = document.getElementById('mobile-shop-buy');
+            if (mobileBuyBtn) {
+                mobileBuyBtn.style.display = 'none';
+                mobileBuyBtn.style.visibility = 'hidden';
+            }
+            const previewCard = document.getElementById('shop-preview-card');
+            if (previewCard) previewCard.classList.add('hidden');
         }
     }
 
@@ -1785,32 +1995,32 @@ class PrismataWeb {
         try {
             const resultProxy = this.pyodide.runPython(`
                 # AI executes actions
-                summary = ai.execute_turn(game, engine)
+            summary = ai.execute_turn(game, engine)
                 
                 # End AI Action phase
-                engine.end_phase()
-                engine.end_turn()
+            engine.end_phase()
+            engine.end_turn()
                 
                 # Start player's turn
-                engine.start_phase()
-                engine.block_phase()
-                
-                res_msg = ""
-                if game.phase == "Block":
-                    total_atk = sum(u.attack for u in engine.attacking_units)
-                    res_msg = f"INCOMING: {total_atk}"
+            engine.start_phase()
+            engine.block_phase()
+
+            res_msg = ""
+            if game.phase == "Block":
+                total_atk = sum(u.attack for u in engine.attacking_units)
+                res_msg = f"INCOMING: {total_atk}"
                 else:
-                    engine.action_phase()
+        engine.action_phase()
                 
                 # Return summary to JS
-                {"summary": summary, "msg": res_msg}
-            `);
+        { "summary": summary, "msg": res_msg }
+        `);
 
             const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
             resultProxy.destroy();
 
             if (result.summary && result.summary.length > 0) {
-                this.log(`AI Actions: ${result.summary.join(", ")}`, 'opponent');
+                this.log(`AI Actions: ${result.summary.join(", ")} `, 'opponent');
             }
 
             if (result.msg) {
@@ -1831,10 +2041,6 @@ class PrismataWeb {
             this.processingTurn = false;
             this.elements.btnEnd.disabled = false;
         }
-    }
-
-    hideShop() {
-        this.elements.shopModal.classList.add('hidden');
     }
 
     // -- Unit Preview --
@@ -1914,24 +2120,24 @@ class PrismataWeb {
         };
 
         window.addGold = (n) => {
-            this.pyodide.runPython(`game.player1.gold += ${n}`);
+            this.pyodide.runPython(`game.player1.gold += ${n} `);
             this.syncState();
             this.updateUI();
             console.log(`Added ${n} Gold.`);
         };
 
         window.addEnergy = (n) => {
-            this.pyodide.runPython(`game.player1.energy += ${n}`);
+            this.pyodide.runPython(`game.player1.energy += ${n} `);
             this.syncState();
             this.updateUI();
             console.log(`Added ${n} Energy.`);
         };
 
         window.addAttack = (n) => {
-            this.pyodide.runPython(`game.player1.displayed_attack += ${n}`);
+            this.pyodide.runPython(`game.player1.displayed_attack += ${n} `);
             this.syncState();
             this.updateUI();
-            console.log(`Added ${n} Attack power (UI only, use properly for logic).`);
+            console.log(`Added ${n} Attack power(UI only, use properly for logic).`);
         };
     }
 
@@ -1956,20 +2162,20 @@ class PrismataWeb {
                 // Create Ripple Effect
                 const ripple = document.createElement('div');
                 ripple.className = 'click-ripple';
-                ripple.style.left = `${e.clientX}px`;
-                ripple.style.top = `${e.clientY}px`;
+                ripple.style.left = `${e.clientX} px`;
+                ripple.style.top = `${e.clientY} px`;
                 document.body.appendChild(ripple);
 
                 // Play particles
                 for (let i = 0; i < 5; i++) {
                     const particle = document.createElement('div');
                     particle.className = 'click-particle';
-                    particle.style.left = `${e.clientX}px`;
-                    particle.style.top = `${e.clientY}px`;
+                    particle.style.left = `${e.clientX} px`;
+                    particle.style.top = `${e.clientY} px`;
                     const angle = Math.random() * Math.PI * 2;
                     const distance = 20 + Math.random() * 30;
-                    particle.style.setProperty('--tx', `${Math.cos(angle) * distance}px`);
-                    particle.style.setProperty('--ty', `${Math.sin(angle) * distance}px`);
+                    particle.style.setProperty('--tx', `${Math.cos(angle) * distance} px`);
+                    particle.style.setProperty('--ty', `${Math.sin(angle) * distance} px`);
                     document.body.appendChild(particle);
                     setTimeout(() => particle.remove(), 600);
                 }
@@ -2016,16 +2222,18 @@ class PrismataWeb {
         });
 
         // Initialize Log Toggle
-        this.elements.btnLogToggle.onclick = () => {
-            this.sounds.play('CLICK');
-            if (!this.elements.combatLogWrapper) return;
-            this.elements.combatLog.classList.toggle('expanded');
-            const isExpanded = this.elements.combatLog.classList.contains('expanded');
-            this.elements.btnLogToggle.innerHTML = isExpanded ? '❌' : '📜';
-        };
+        if (this.elements.btnLogToggle) {
+            this.elements.btnLogToggle.onclick = () => {
+                this.sounds.play('CLICK');
+                if (!this.elements.combatLogWrapper) return;
+                this.elements.combatLog.classList.toggle('expanded');
+                const isExpanded = this.elements.combatLog.classList.contains('expanded');
+                this.elements.btnLogToggle.innerHTML = isExpanded ? '❌' : '📜';
+            };
+        }
 
-        // Initialize Modals - Close Button
-        const closeBtns = document.querySelectorAll('.close-btn');
+        // Initialize Modals - Close Button (shop only, not settings)
+        const closeBtns = document.querySelectorAll('#shop-modal .close-btn');
         closeBtns.forEach(btn => {
             btn.onclick = () => {
                 this.sounds.play('CLICK');
@@ -2033,7 +2241,7 @@ class PrismataWeb {
             };
         });
 
-        // Close modal on outside click
+        // Close shop modal on outside click
         this.elements.shopModal.onclick = (e) => {
             if (e.target === this.elements.shopModal) {
                 this.sounds.play('CLICK');
@@ -2050,6 +2258,14 @@ class PrismataWeb {
         this.elements.closeSettings.onclick = () => {
             this.sounds.play('CLICK');
             this.elements.settingsModal.classList.add('hidden');
+        };
+
+        // Close settings on outside click
+        this.elements.settingsModal.onclick = (e) => {
+            if (e.target === this.elements.settingsModal) {
+                this.sounds.play('CLICK');
+                this.elements.settingsModal.classList.add('hidden');
+            }
         };
 
         this.elements.btnRestart.onclick = () => {
@@ -2106,7 +2322,7 @@ class PrismataWeb {
         }
         let unitsBought = Math.max(0, totalAcquired - startingUnits);
 
-        if (this.elements.endgameWinner) this.elements.endgameWinner.textContent = `Winner: ${winnerName}`;
+        if (this.elements.endgameWinner) this.elements.endgameWinner.textContent = `Winner: ${winnerName} `;
         if (this.elements.endgameTurns) this.elements.endgameTurns.textContent = this.state.turn;
         if (this.elements.endgameUnits) this.elements.endgameUnits.textContent = unitsBought;
         if (this.elements.endgameGold) this.elements.endgameGold.textContent = winnerState ? winnerState.gold : 0;

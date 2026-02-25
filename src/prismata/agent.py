@@ -106,7 +106,7 @@ class Agent:
         if unblocked > 0:
             # In the web version, if Player 1 is attacking the AI, 
             # we want Player 1 to manually assign the breach damage.
-            if game.other_player.name == "Player 1":
+            if game.other_player.name == game.player1.name:
                  self.log(f"Defense Phase: {unblocked} damage unblocked. Waiting for Player 1 to assign damage...")
                  return # Return and let the human assign via UI
             
