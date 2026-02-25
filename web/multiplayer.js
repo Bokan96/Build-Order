@@ -18,15 +18,21 @@ class MultiplayerManager {
     }
 
     /**
-     * Generate a short alphanumeric room code
+     * Pool of memorable 3-letter room codes
      */
-    _generateCode(length = 5) {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I/O/0/1 to avoid confusion
-        let code = '';
-        for (let i = 0; i < length; i++) {
-            code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return code;
+    static ROOM_CODES = [
+        'ACE', 'CAT', 'DOG', 'FOX', 'KEY',
+        'MAP', 'SUN', 'WAR', 'WIN', 'TOP',
+        'FUN', 'RED', 'BOX', 'JET', 'CAP',
+        'RUN', 'PIG', 'BAT', 'CAR', 'HAT'
+    ];
+
+    /**
+     * Pick a random room code from the word list
+     */
+    _generateCode() {
+        const codes = MultiplayerManager.ROOM_CODES;
+        return codes[Math.floor(Math.random() * codes.length)];
     }
 
     /**
@@ -68,7 +74,7 @@ class MultiplayerManager {
     createRoom() {
         return new Promise((resolve, reject) => {
             this.isHost = true;
-            this.roomCode = 'BO-' + this._generateCode();
+            this.roomCode = this._generateCode();
 
             this._emitState('connecting', 'Creating room...');
 
