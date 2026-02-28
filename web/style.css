@@ -1298,7 +1298,7 @@ body {
 .menu-container {
     max-width: 700px;
     width: 90%;
-    padding: 3rem;
+    padding: 2rem;
     border-radius: var(--radius-lg);
     border: 2px solid var(--glass-border);
     text-align: center;
@@ -1306,10 +1306,10 @@ body {
 }
 
 .game-title h1 {
-    font-size: 3.5rem;
+    font-size: 2.5rem;
     font-weight: 800;
     letter-spacing: 4px;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.3rem;
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-purple));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -1317,40 +1317,40 @@ body {
 }
 
 .game-title h2 {
-    font-size: 2rem;
+    font-size: 1.8rem;
     font-weight: 700;
     letter-spacing: 2px;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
     color: var(--text-main);
 }
 
 .game-title .tagline {
-    font-size: 1rem;
+    font-size: 0.95rem;
     color: var(--text-dim);
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
     font-weight: 300;
 }
 
 .game-description {
-    margin: 2rem 0;
-    line-height: 1.8;
+    margin: 1rem 0;
+    line-height: 1.6;
     color: var(--text-dim);
 }
 
 .game-description p {
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .menu-buttons {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    margin-top: 3rem;
+    gap: 0.8rem;
+    margin-top: 1.5rem;
 }
 
 .menu-btn {
-    padding: 1.5rem 3rem;
-    font-size: 1.2rem;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
     font-weight: 800;
     border: 2px solid transparent;
     cursor: url('assets/UI/cursor-pointer.svg') 5 5, auto;
@@ -1376,7 +1376,7 @@ body {
     background: var(--glass-bg);
     color: white;
     border-color: var(--glass-border);
-    margin-top: 2rem;
+    margin-top: 1rem;
 }
 
 .menu-btn.secondary:hover {
@@ -2139,36 +2139,36 @@ body {
 
     .menu-container {
         width: 95%;
-        padding: 1.5rem;
+        padding: 0.8rem;
         margin: auto;
         max-height: 100vh;
         overflow-y: auto;
     }
 
     .game-title h1 {
-        font-size: 2.2rem;
+        font-size: 1.8rem;
     }
 
     .game-title .tagline {
-        font-size: 0.85rem;
-        margin-bottom: 1rem;
+        font-size: 0.8rem;
+        margin-bottom: 0.4rem;
     }
 
     .game-description {
-        font-size: 0.85rem;
-        margin: 1rem 0;
+        font-size: 0.8rem;
+        margin: 0.4rem 0;
     }
 
     .menu-buttons {
-        margin-top: 1.5rem;
-        gap: 0.8rem;
+        margin-top: 0.5rem;
+        gap: 0.4rem;
     }
 
     .menu-btn {
         width: 100%;
         margin-bottom: 0;
-        padding: 1rem 2rem;
-        font-size: 1rem;
+        padding: 0.7rem 1rem;
+        font-size: 0.95rem;
     }
 
     .menu-btn.secondary {
