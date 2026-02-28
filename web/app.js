@@ -435,15 +435,32 @@ class PrismataWeb {
         const phaseBadge = document.querySelector('.stat-badge.phase');
         const settingsBtn = document.getElementById('btn-settings');
 
-        // Only move if not already inside separator
-        if (turnBadge && !separator.contains(turnBadge)) {
-            separator.insertBefore(turnBadge, centralAttack);
+        // Create left and right flex containers if they don't exist
+        let sepLeft = separator.querySelector('.sep-left');
+        let sepRight = separator.querySelector('.sep-right');
+
+        if (!sepLeft) {
+            sepLeft = document.createElement('div');
+            sepLeft.className = 'sep-left';
+            separator.insertBefore(sepLeft, centralAttack);
         }
-        if (phaseBadge && !separator.contains(phaseBadge)) {
-            separator.insertBefore(phaseBadge, centralAttack);
+        if (!sepRight) {
+            sepRight = document.createElement('div');
+            sepRight.className = 'sep-right';
+            separator.appendChild(sepRight);
         }
-        if (settingsBtn && !separator.contains(settingsBtn)) {
-            separator.appendChild(settingsBtn);
+
+        // Left side gets just Phase
+        if (phaseBadge && !sepLeft.contains(phaseBadge)) {
+            sepLeft.appendChild(phaseBadge);
+        }
+
+        // Right side gets Turn and Settings
+        if (turnBadge && !sepRight.contains(turnBadge)) {
+            sepRight.appendChild(turnBadge);
+        }
+        if (settingsBtn && !sepRight.contains(settingsBtn)) {
+            sepRight.appendChild(settingsBtn);
         }
     }
 
@@ -2059,14 +2076,14 @@ class PrismataWeb {
 
         try {
             const resultProxy = this.pyodide.runPython(`
-                # AI executes actions
+            # AI executes actions
             summary = ai.execute_turn(game, engine)
-                
-                # End AI Action phase
+            
+            # End AI Action phase
             engine.end_phase()
             engine.end_turn()
-                
-                # Start player's turn
+            
+            # Start player's turn
             engine.start_phase()
             engine.block_phase()
 
@@ -2074,11 +2091,11 @@ class PrismataWeb {
             if game.phase == "Block":
                 total_atk = sum(u.attack for u in engine.attacking_units)
                 res_msg = f"INCOMING: {total_atk}"
-                else:
-        engine.action_phase()
-                
-                # Return summary to JS
-        { "summary": summary, "msg": res_msg }
+            else:
+                engine.action_phase()
+            
+            # Return summary to JS
+            { "summary": summary, "msg": res_msg }
         `);
 
             const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
