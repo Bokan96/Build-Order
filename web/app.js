@@ -92,6 +92,18 @@ class PrismataWeb {
 
             this.isLoaded = true;
             this.bindEvents();
+
+            // Load settings
+            const savedName = localStorage.getItem('playerName') || '';
+            const playerNameInput = document.getElementById('player-name-input');
+            if (playerNameInput) playerNameInput.value = savedName;
+
+            if (playerNameInput) {
+                playerNameInput.addEventListener('input', (e) => {
+                    localStorage.setItem('playerName', e.target.value.trim());
+                });
+            }
+
             this.hideLoading();
             this.showWelcomeScreen();
 
@@ -136,12 +148,23 @@ class PrismataWeb {
             updateStatus(state, detail);
 
             if (state === 'connected') {
-                // Brief delay, then start game
+                this.gameMode = 'ONLINE';
+                this.isHost = this.multiplayer.isHost;
+                this.selectedAI = null;
+                this.opponentName = null;
+
+                // Immediately setup callbacks so we don't miss handshakes
+                this.setupMultiplayerCallbacks();
+
+                // Send own name
+                const inputNameEl = document.getElementById('player-name-input');
+                const myName = (inputNameEl && inputNameEl.value.trim() !== '') ? inputNameEl.value.trim() : 'Player';
+
                 setTimeout(() => {
-                    this.gameMode = 'ONLINE';
-                    this.isHost = this.multiplayer.isHost;
-                    this.selectedAI = null;
-                    this.setupMultiplayerCallbacks();
+                    this.multiplayer.sendAction({ type: 'handshake', name: myName });
+                }, 200);
+
+                setTimeout(() => {
                     this.elements.onlineLobbyScreen.classList.add('hidden');
                     this.startGame();
                 }, 800);
@@ -216,6 +239,10 @@ class PrismataWeb {
 
     setupMultiplayerCallbacks() {
         this.multiplayer.onAction((action) => {
+            if (action.type === 'handshake') {
+                this.opponentName = action.name;
+                return;
+            }
             console.log('[Online] Received remote action:', action);
             this.receiveRemoteAction(action);
         });
@@ -393,9 +420,31 @@ class PrismataWeb {
                     this.log("Local Multiplayer Mode Started.", "system");
                 }
 
+                this.setupMobileLayout();
                 this.updateUI();
             }, 500);
         }, 100);
+    }
+
+    setupMobileLayout() {
+        if (window.innerWidth > 768) return;
+
+        const separator = document.querySelector('.player-separator');
+        const centralAttack = separator.querySelector('.central-attack');
+        const turnBadge = document.querySelector('.stat-badge.turn');
+        const phaseBadge = document.querySelector('.stat-badge.phase');
+        const settingsBtn = document.getElementById('btn-settings');
+
+        // Only move if not already inside separator
+        if (turnBadge && !separator.contains(turnBadge)) {
+            separator.insertBefore(turnBadge, centralAttack);
+        }
+        if (phaseBadge && !separator.contains(phaseBadge)) {
+            separator.insertBefore(phaseBadge, centralAttack);
+        }
+        if (settingsBtn && !separator.contains(settingsBtn)) {
+            separator.appendChild(settingsBtn);
+        }
     }
 
     resetGame() {
@@ -447,8 +496,24 @@ class PrismataWeb {
         // Shuffle the list to get random unique names
         const shuffledNames = [...nameList].sort(() => 0.5 - Math.random());
 
-        const p1Name = shuffledNames[0];
-        const p2Name = (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') ? shuffledNames[1] : "AI";
+        const inputNameEl = document.getElementById('player-name-input');
+        const customName = (inputNameEl && inputNameEl.value.trim() !== '') ? inputNameEl.value.trim() : null;
+
+        let p1Name = shuffledNames[0];
+        let p2Name = (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') ? shuffledNames[1] : "AI";
+
+        if (this.gameMode === 'ONLINE') {
+            if (this.isHost) {
+                p1Name = customName || shuffledNames[0];
+                p2Name = this.opponentName || shuffledNames[1];
+            } else {
+                p1Name = this.opponentName || shuffledNames[0];
+                p2Name = customName || shuffledNames[1];
+            }
+        } else {
+            p1Name = customName || shuffledNames[0];
+        }
+
         const aiType = this.selectedAI || 'Aggressive';
 
         // Initialize GameState and GameEngine instances in Python
@@ -2250,10 +2315,33 @@ class PrismataWeb {
         };
 
         // Settings
+        const updateSettingsButtons = () => {
+            const inGame = !this.elements.app.classList.contains('hidden');
+            const actionsDiv = document.querySelector('.settings-actions');
+            if (actionsDiv) {
+                actionsDiv.style.display = inGame ? 'flex' : 'none';
+            }
+            const playerNameDiv = document.getElementById('setting-player-name');
+            if (playerNameDiv) {
+                // setting-item is a flex container
+                playerNameDiv.style.display = inGame ? 'none' : 'flex';
+            }
+        };
+
         this.elements.btnSettings.onclick = () => {
             this.sounds.play('CLICK');
+            updateSettingsButtons();
             this.elements.settingsModal.classList.remove('hidden');
         };
+
+        const btnMainSettings = document.getElementById('btn-main-settings');
+        if (btnMainSettings) {
+            btnMainSettings.onclick = () => {
+                this.sounds.play('CLICK');
+                updateSettingsButtons();
+                this.elements.settingsModal.classList.remove('hidden');
+            };
+        }
 
         this.elements.closeSettings.onclick = () => {
             this.sounds.play('CLICK');
