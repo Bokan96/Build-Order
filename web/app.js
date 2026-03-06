@@ -174,7 +174,70 @@ class PrismataWeb {
 
     showWelcomeScreen() {
         this.elements.welcomeScreen.classList.remove('hidden');
+        this._initParallaxBg();
         // event listeners are now in bindEvents
+    }
+
+    _initParallaxBg() {
+        const screen = this.elements.welcomeScreen;
+        let bg = screen.querySelector('.menu-parallax-bg');
+        if (bg) return; // already injected
+        bg = document.createElement('div');
+        bg.className = 'menu-parallax-bg';
+        screen.insertBefore(bg, screen.firstChild);
+
+        const cardNames = [
+            'Miner', 'Energizer', 'Striker', 'Guard',
+            'Wall', 'Volitile', 'Repeater', 'Barrier'
+        ];
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+
+        // Scale card count based on screen area, minimum 8
+        const area = W * H;
+        const count = Math.max(8, Math.min(24, Math.round(area / 35000)));
+
+        // Build pool of names (cycle through all 8 types evenly)
+        const pool = [];
+        for (let i = 0; i < count; i++) pool.push(cardNames[i % cardNames.length]);
+
+        // Poisson-style placement with minimum distance
+        const placed = [];
+        const MIN_DIST = 160; // px between card centres
+        const MAX_ATTEMPTS = 40;
+
+        pool.forEach((name) => {
+            let x, y, attempts = 0, ok = false;
+            const w = 90 + Math.random() * 60;
+            do {
+                x = Math.random() * (W - w);
+                y = Math.random() * (H - 180);
+                const cx = x + w / 2, cy = y + 90;
+                ok = placed.every(p => Math.hypot(cx - p.cx, cy - p.cy) >= MIN_DIST);
+                attempts++;
+            } while (!ok && attempts < MAX_ATTEMPTS);
+
+            const img = document.createElement('img');
+            img.src = `assets/cards/${name}.webp`;
+            img.className = 'p-card';
+            const r0 = (Math.random() * 20 - 10).toFixed(1);
+            const r1 = (parseFloat(r0) + (Math.random() * 10 - 5)).toFixed(1);
+            const dx = ((Math.random() * 30) - 15).toFixed(1);
+            const dy = ((Math.random() * 30) - 15).toFixed(1);
+            const dur = 18 + Math.random() * 20;
+            const delay = -(Math.random() * dur);
+
+            img.style.cssText = `
+                width: ${w.toFixed(0)}px;
+                left: ${x.toFixed(0)}px;
+                top:  ${y.toFixed(0)}px;
+                --r0: ${r0}deg; --r1: ${r1}deg;
+                --dx: ${dx}px;  --dy: ${dy}px;
+                animation: card-drift ${dur.toFixed(1)}s ${delay.toFixed(1)}s ease-in-out infinite;
+            `;
+            bg.appendChild(img);
+            placed.push({ cx: x + (w / 2), cy: y + 90 });
+        });
     }
 
     showOnlineLobby() {
@@ -320,6 +383,7 @@ class PrismataWeb {
                 this.multiplayer.disconnect();
                 this.elements.app.classList.add('hidden');
                 this.elements.welcomeScreen.classList.remove('hidden');
+                document.title = 'Build Order | Strategic Card Battle';
             };
         }
     }
@@ -571,19 +635,19 @@ class PrismataWeb {
         const inputNameEl = document.getElementById('player-name-input');
         const customName = (inputNameEl && inputNameEl.value.trim() !== '') ? inputNameEl.value.trim() : null;
 
-        let p1Name = shuffledNames[0];
-        let p2Name = (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') ? shuffledNames[1] : "AI";
+        let p1Name = "Player 1";
+        let p2Name = (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') ? "Player 2" : "AI";
 
         if (this.gameMode === 'ONLINE') {
             if (this.isHost) {
-                p1Name = customName || shuffledNames[0];
-                p2Name = this.opponentName || shuffledNames[1];
+                p1Name = customName || "Player 1";
+                p2Name = this.opponentName || "Player 2";
             } else {
-                p1Name = this.opponentName || shuffledNames[0];
-                p2Name = customName || shuffledNames[1];
+                p1Name = this.opponentName || "Player 1";
+                p2Name = customName || "Player 2";
             }
         } else {
-            p1Name = customName || shuffledNames[0];
+            p1Name = customName || "Player";
         }
 
         const aiType = this.selectedAI || 'Aggressive';
@@ -783,13 +847,14 @@ class PrismataWeb {
         const atkEl = document.getElementById('central-atk');
         if (atkEl) {
             atkEl.textContent = displayVal;
-            // Visual feedback if > 0
+            const container = atkEl.parentElement;
+            container.style.opacity = '1';
             if (displayVal > 0) {
-                atkEl.parentElement.style.opacity = '1';
-                atkEl.parentElement.style.borderColor = 'var(--accent-red)';
+                container.style.borderColor = 'var(--accent-red)';
+                container.classList.add('danger');
             } else {
-                atkEl.parentElement.style.opacity = '1';
-                atkEl.parentElement.style.borderColor = 'var(--glass-border)';
+                container.style.borderColor = 'var(--glass-border)';
+                container.classList.remove('danger');
             }
         }
     }
@@ -797,7 +862,6 @@ class PrismataWeb {
     updateResourceDisplay(id, checkVal, isHp = false) {
         const el = document.getElementById(id);
         const oldVal = parseInt(el.textContent) || 0;
-        el.textContent = checkVal;
 
         if (checkVal === 0) {
             el.classList.add('zero-resource');
@@ -806,12 +870,35 @@ class PrismataWeb {
         }
 
         if (checkVal > oldVal) {
+            el.textContent = checkVal;
             el.classList.add('resource-bump');
             setTimeout(() => el.classList.remove('resource-bump'), 600);
         } else if (checkVal < oldVal) {
+            // Animated count-down: update text gradually, colour change only at 0
+            this._animateDecrement(el, oldVal, checkVal);
             el.classList.add('resource-drop');
-            setTimeout(() => el.classList.remove('resource-drop'), 600);
+            setTimeout(() => el.classList.remove('resource-drop'), 1000);
+        } else {
+            el.textContent = checkVal;
         }
+    }
+
+    _animateDecrement(el, from, to) {
+        // Clear any in-progress decrement
+        if (el._decrementInterval) clearInterval(el._decrementInterval);
+        const diff = Math.abs(from - to);
+        const steps = Math.min(diff, 20);
+        const stepDur = 1000 / steps;
+        let cur = from;
+        const dir = to < from ? -1 : 1;
+        el._decrementInterval = setInterval(() => {
+            cur += dir;
+            el.textContent = cur;
+            if (cur === to) {
+                clearInterval(el._decrementInterval);
+                el._decrementInterval = null;
+            }
+        }, stepDur);
     }
 
     renderUnits(container, units, isFriendly) {
@@ -890,16 +977,27 @@ class PrismataWeb {
                 card.style.zIndex = indexInType;
                 const imgUrl = this.unitImages[unit.type];
 
-                // Lethal/Safe Overlay (Breach Phase)
+                // Lethal overlay (Breach Phase) - number above sword, thicker outline
                 let overlayHtml = '';
                 if (this.state.phase === 'Breach' && !isFriendly && unit.hp > 0) {
                     const combat = this.state.combat;
                     const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
                     if (unit.hp <= remaining) {
                         const rotateFix = isExhausted ? 'transform: rotate(-90deg);' : '';
-                        overlayHtml = `<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255, 68, 68, 0.4);color:white;display:flex;align-items:center;justify-content:center;z-index:20;text-shadow: 0 0 10px black;pointer-events:none;user-select:none;"><span style="${rotateFix} display:flex;flex-direction:column;align-items:center;"><span style="font-size:3rem;line-height:1;">💔</span><span style="font-size:1.5rem;font-weight:bold;margin-top:-5px;text-shadow:0 2px 4px black;">${unit.hp}</span></span></div>`;
+                        const numStyle = 'font-size:2rem;font-weight:900;line-height:1;color:#fff;' +
+                            'text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000,' +
+                            '0 0 10px rgba(255,60,60,1);letter-spacing:1px;';
+                        overlayHtml = `<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,68,68,0.25);color:white;display:flex;align-items:center;justify-content:center;z-index:20;pointer-events:none;user-select:none;"><span style="${rotateFix} display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="${numStyle}">${unit.hp}</span><span style="font-size:2.2rem;line-height:1;">⚔️</span></span></div>`;
                         card.classList.add('lethal-target');
                     }
+                }
+
+                // Block overlay (Block Phase) - block value above shield, blue, only eligible units
+                if (this.state.phase === 'Block' && isFriendly && !unit.exhausted && unit.blk > 0) {
+                    const blkStyle = 'font-size:2rem;font-weight:900;line-height:1;color:#a0d4ff;' +
+                        'text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000,' +
+                        '0 0 10px rgba(0,150,255,0.9);letter-spacing:1px;';
+                    overlayHtml += `<div class="block-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,100,255,0.15);display:flex;align-items:center;justify-content:center;z-index:20;pointer-events:none;user-select:none;"><span style="display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="${blkStyle}">${unit.blk}</span><span style="font-size:2.2rem;line-height:1;">🛡️</span></span></div>`;
                 }
 
                 card.innerHTML = `
@@ -1062,7 +1160,7 @@ class PrismataWeb {
         } else if (phase === 'Breach') {
             const combat = this.state.combat;
             const remaining = Math.max(0, (combat.atk - combat.blk) - combat.assigned);
-            this.elements.btnEnd.textContent = `ATTACK BASE (${remaining})`;
+            this.elements.btnEnd.textContent = `ATTACK BASE ${remaining} ⚔️`;
             this.elements.btnEnd.classList.add('important');
         } else {
             this.elements.btnEnd.textContent = "END TURN";
@@ -2440,6 +2538,10 @@ class PrismataWeb {
                 this.elements.settingsModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
                 this.elements.welcomeScreen.classList.remove('hidden');
+                document.title = 'Build Order | Strategic Card Battle';
+                if (this.gameMode === 'ONLINE') {
+                    this.multiplayer.disconnect();
+                }
                 this.log("Exited to Main Menu", "system");
             };
         }
@@ -2458,6 +2560,10 @@ class PrismataWeb {
                 this.elements.endgameModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
                 this.elements.welcomeScreen.classList.remove('hidden');
+                document.title = 'Build Order | Strategic Card Battle';
+                if (this.gameMode === 'ONLINE') {
+                    this.multiplayer.disconnect();
+                }
                 this.log("Exited to Main Menu", "system");
             };
         }

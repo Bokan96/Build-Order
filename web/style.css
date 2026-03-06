@@ -241,6 +241,28 @@ body {
     gap: 0.3rem;
     position: relative;
     user-select: none;
+    transition: box-shadow 0.3s, border-color 0.3s;
+}
+
+.central-attack.danger {
+    animation: danger-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes danger-pulse {
+    0% {
+        box-shadow: 0 0 10px rgba(255, 60, 60, 0.4);
+        border-color: #ff3c3c;
+    }
+
+    50% {
+        box-shadow: 0 0 30px rgba(255, 60, 60, 0.9);
+        border-color: #ff8080;
+    }
+
+    100% {
+        box-shadow: 0 0 10px rgba(255, 60, 60, 0.4);
+        border-color: #ff3c3c;
+    }
 }
 
 .central-attack .icon {
@@ -682,6 +704,7 @@ body {
     font-size: 1.5rem;
     letter-spacing: 1px;
     color: var(--accent-primary);
+    text-align: center;
 }
 
 .preview-stats {
@@ -1315,7 +1338,39 @@ body {
     justify-content: center;
     z-index: 500;
     transition: opacity 0.5s ease;
-    overflow-y: auto;
+    overflow: hidden;
+}
+
+/* Parallax card sprites injected by JS */
+.menu-parallax-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 0;
+}
+
+.menu-parallax-bg .p-card {
+    position: absolute;
+    border-radius: 8px;
+    opacity: 0.08;
+    filter: blur(0.3px);
+    will-change: transform;
+    transform-origin: center;
+}
+
+@keyframes card-drift {
+    0% {
+        transform: translate(0px, 0px) rotate(var(--r0));
+    }
+
+    50% {
+        transform: translate(var(--dx), var(--dy)) rotate(var(--r1));
+    }
+
+    100% {
+        transform: translate(0px, 0px) rotate(var(--r0));
+    }
 }
 
 .menu-screen.hidden {
@@ -1324,6 +1379,8 @@ body {
 }
 
 .menu-container {
+    position: relative;
+    z-index: 1;
     max-width: 700px;
     width: 90%;
     padding: 2rem;
@@ -1721,21 +1778,28 @@ body {
 
 @keyframes resourceDrop {
     0% {
-        transform: scale(1);
+        transform: scale(1) translateY(0);
+        color: inherit;
     }
 
-    50% {
-        transform: scale(0.8);
+    40% {
+        transform: scale(1.1) translateY(-2px);
+        color: inherit;
+    }
+
+    80% {
+        transform: scale(0.88) translateY(2px);
         color: var(--accent-red);
     }
 
     100% {
-        transform: scale(1);
+        transform: scale(1) translateY(0);
+        color: var(--accent-red);
     }
 }
 
 .resource-drop {
-    animation: resourceDrop 0.6s ease-out;
+    animation: resourceDrop 1s ease-out;
 }
 
 @keyframes shakeError {
