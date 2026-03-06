@@ -1,4 +1,4 @@
-# ⚔️ **BUILD ORDER (PRISMATA LITE) — Rulebook v2.0**
+# ⚔️ **BUILD ORDER — Rulebook v2.0**
 
 A 2-player, perfect-information strategy game about timing, resource management, and breaking defenses.
 

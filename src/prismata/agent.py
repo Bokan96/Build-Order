@@ -88,7 +88,8 @@ class Agent:
         for u in available_blockers:
             total_blk = sum(u.block for u in engine.blocking_units)
             unblocked = max(0, total_atk - total_blk)
-            if unblocked <= 0: break
+            # The general strategy for all AI opponents is that they should 
+            # always block if they have available blockers during opponents attack phase.
             
             success, msg = engine.assign_blockers([(u.name.lower(), 1)])
             if success:
