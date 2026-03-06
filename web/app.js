@@ -85,10 +85,65 @@ class PrismataWeb {
             console.log("Initializing Pyodide... [VERSION 0.5.2 - SNAPPY UPDATE]");
             this.updateLoadingText("Downloading Python runtime...");
 
-            this.pyodide = await loadPyodide();
+            const loadingBar = document.getElementById('loading-bar');
+            if (loadingBar) loadingBar.style.width = '10%';
 
-            this.updateLoadingText("Loading game files...");
-            await this.mountFileSystem();
+            // Start preloading assets while Pyodide is downloading
+            const assetsToLoad = Object.values(this.unitImages).concat([
+                'assets/sounds/buy.mp3',
+                'assets/sounds/error.mp3',
+                'assets/sounds/ability.mp3',
+                'assets/sounds/block.mp3',
+                'assets/sounds/attack_prep.mp3',
+                'assets/sounds/hover_short.mp3',
+                'assets/sounds/destroy.mp3',
+                'assets/sounds/destroy2.mp3',
+                'assets/sounds/destroy3.mp3',
+                'assets/sounds/click.mp3',
+                'assets/sounds/end_turn.mp3',
+                'assets/sounds/victory.mp3',
+                'assets/sounds/JDSherbert - Ultimate UI SFX Pack - Cursor - 3.mp3',
+                'assets/sounds/JDSherbert - Ultimate UI SFX Pack - Cursor - 5.mp3',
+                'assets/sounds/JDSherbert - Ultimate UI SFX Pack - Swipe - 2.mp3',
+                'assets/sounds/hover.wav',
+                'assets/sounds/shop_open.wav'
+            ]);
+
+            let loadedCount = 0;
+            const updateProgress = () => {
+                loadedCount++;
+                if (loadingBar) {
+                    loadingBar.style.width = `${10 + (loadedCount / assetsToLoad.length) * 40}%`;
+                }
+            };
+
+            const preloadPromises = assetsToLoad.map(src => {
+                return new Promise((resolve) => {
+                    if (src.endsWith('.mp3') || src.endsWith('.wav')) {
+                        const audio = new Audio();
+                        audio.addEventListener('canplaythrough', resolve, { once: true });
+                        audio.addEventListener('error', resolve, { once: true });
+                        audio.src = src;
+                        audio.load();
+                    } else {
+                        const img = new Image();
+                        img.onload = resolve;
+                        img.onerror = resolve;
+                        img.src = src;
+                    }
+                }).then(updateProgress);
+            });
+
+            const pyodidePromise = loadPyodide().then(async (pyodideObj) => {
+                this.pyodide = pyodideObj;
+                if (loadingBar) loadingBar.style.width = '70%';
+
+                this.updateLoadingText("Loading game files...");
+                await this.mountFileSystem();
+                if (loadingBar) loadingBar.style.width = '100%';
+            });
+
+            await Promise.all([...preloadPromises, pyodidePromise]);
 
             this.isLoaded = true;
             this.bindEvents();
@@ -2332,22 +2387,20 @@ class PrismataWeb {
         };
 
         // Settings
-        const updateSettingsButtons = () => {
-            const inGame = !this.elements.app.classList.contains('hidden');
+        const updateSettingsButtons = (isMainMenu) => {
             const actionsDiv = document.querySelector('.settings-actions');
             if (actionsDiv) {
-                actionsDiv.style.display = inGame ? 'flex' : 'none';
+                actionsDiv.style.display = isMainMenu ? 'none' : '';
             }
             const playerNameDiv = document.getElementById('setting-player-name');
             if (playerNameDiv) {
-                // setting-item is a flex container
-                playerNameDiv.style.display = inGame ? 'none' : 'flex';
+                playerNameDiv.style.display = isMainMenu ? '' : 'none';
             }
         };
 
         this.elements.btnSettings.onclick = () => {
             this.sounds.play('CLICK');
-            updateSettingsButtons();
+            updateSettingsButtons(false);
             this.elements.settingsModal.classList.remove('hidden');
         };
 
@@ -2355,7 +2408,7 @@ class PrismataWeb {
         if (btnMainSettings) {
             btnMainSettings.onclick = () => {
                 this.sounds.play('CLICK');
-                updateSettingsButtons();
+                updateSettingsButtons(true);
                 this.elements.settingsModal.classList.remove('hidden');
             };
         }

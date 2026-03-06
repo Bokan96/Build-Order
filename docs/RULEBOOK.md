@@ -1,247 +1,141 @@
-# ⚔️ **PRISMATA LITE — Rulebook v1.0**
+# ⚔️ **BUILD ORDER (PRISMATA LITE) — Rulebook v2.0**
 
 A 2-player, perfect-information strategy game about timing, resource management, and breaking defenses.
 
 ---
 
-## 🧩 Components
-
-* Unit cards (8 types)
-* 6 dice (used as resource trackers)
-* 2 Base HP trackers (or pen & paper)
-
----
-
 ## 🎯 Objective
 
-Each player has a **Base with 10 Health**.
-
+Each player has a Base with **10 Health**.
 You win immediately when your opponent's Base reaches **0 Health**.
 
 ---
 
 ## 🎲 Resources
 
-There are only **two resources**:
+There are two primary resources:
 
 ### 💰 Gold
-
 * Used to **buy units**
 * Carries over between turns
-* Tracked with dice
 
 ### ⚡ Energy
+* Used to **buy multiple units per turn** and **activate abilities**
+* Resets to **0 at the end of your turn**
 
-* Used to **buy advanced units** and **activate abilities**
-* Resets to **0 at end of your turn**
-* Tracked with dice
-
-There is no limit to how much you can hold, but totals are designed to usually stay within dice range.
+*Note: There is no maximum limit to how much you can hold, but wise spending is key to maintaining momentum.*
 
 ---
 
-### 🏁 Setup
+## 🏁 Setup
 
-* **2 Gold** and **0 Energy**
-* **1 Miner** and **1 Energizer** (Ready)
-* **Player 2 Advantage:** Starts with one additional **Barrier** unit (Ready).
-
-Both players set their Base to **10 Health**.
-Choose a starting player randomly.
+* **Starting Resources:** Both players start with 2 Gold and 0 Energy.
+* **Starting Units:** Both players begin with 1 **Miner** and 1 **Energizer** (in play and ready).
+* **Player 2 Advantage:** The second player receives one additional **Barrier** unit (in play and ready) to compensate for going second.
+* **Base Health:** Both players start at 10 HP.
 
 ---
 
 ## 🔄 Turn Structure
 
-Players alternate turns. Each turn has up to **4 phases**:
-
----
+The game operates seamlessly across distinct phases to handle both your actions and incoming combat from your opponent.
 
 ### 1️⃣ Start Phase
+* Triggers at the official beginning of your turn.
+* Energy is reset to 0.
 
-* **Ready Units:** All your exhausted units become ready to use.
-* **Maintenance:** Any damage taken by units that didn't die is reset.
+### 2️⃣ Block Phase (Defender)
+* Occurs at the start of your turn **if your opponent declared an attack on their previous turn**.
+* You evaluate the total incoming attack damage against your forces.
+* **Assign Blockers:** You assign any of your **ready** (un-exhausted) units to block. You cannot assign units that are already exhausted.
+* *Note: The total block value of your assigned units directly mitigates the incoming attack.*
 
----
+### 3️⃣ Breach Phase (Attacker)
+* If the incoming Attack damage exceeds the assigned Block, a Breach occurs.
+* During your turn, your opponent (the Attacker) gets temporary control to allocate unmitigated ("leftover") damage to your units.
+* The Attacker can pinpoint and destroy specific unblocked units, paying exactly their remaining Health to destroy them.
+* Any unassigned damage directly reduces your Base HP.
 
-### 2️⃣ Action Phase
+### 4️⃣ Action Phase (Active Player)
+Once combat resolution concludes, your main phase begins. You may perform these actions in any order:
 
-You may perform these in any order:
+* **⚙️ Use Abilities:** Many units can activate abilities (like generating gold or energy). Doing this **exhausts** the unit, meaning it *cannot block* on your opponent's upcoming turn!
+* **🛒 Buy Units:** You may purchase up to **2 units** per turn from the shop. 
+  * The **first unit** costs its base Gold cost.
+  * The **second unit** costs its base Gold cost **+ 1 Energy** penalty.
+  * Units enter play **Exhausted** (with the exception of Walls).
+  * Global Unit Caps: You can own a maximum of **5** of each unit type, except **Walls** (cap of 3).
+* **⚔️ Prepare Attackers:** You can exhaust specific combat units (like Strikers and Volatiles) to prepare them for an attack. Most attacking requires **Energy**. Their attack value pools together into a total Attack score that will hit your opponent during *their* Block Phase on the following turn.
 
-#### ⚙️ Use Abilities
-* Units with abilities must **exhaust** to use them.
-* **Important:** If you use a unit here, it is exhausted and **cannot block** in the following Defense Phase of this turn!
-
-#### 🛒 Buy Units
-* You may buy up to **2 units** per turn.
-* **Cost:** Pay the unit's cost. **Penalty:** The second unit costs **+1 Energy**.
-* **Global Cap:** Max **5** of each type (**3** for Walls).
-* New units enter play **EXHAUSTED**.
-
-#### ⚔️ Prepare Attackers
-* Exhaust units you want to attack with.
-* **Cost:** **Striker** costs **1 Energy** to attack.
-* *Attacks resolve at the end of your opponent's next turn (during their Defense Phase).*
-
----
-
-### 3️⃣ Defense Phase ⚠️ (Conditional)
-
-*This phase occurs at the end of your turn if your opponent attacked on their last turn.*
-
-1. **Incoming Attack:** You are shown the total damage incoming.
-2. **Assign Blockers (Defender):** You may assign any number of **ready** units to block.
-   * Units used in the Action Phase are already exhausted and unavailable!
-   * **Your Units:** They can choose to destroy specific targets.
-   * **Your Base:** Any remaining damage hits your Base.
-
-*Strategy:* If you block everything, the opponent cannot target your units! If you let damage through, they choose what dies.
+### 5️⃣ End Phase
+* Your turn concludes.
+* Any unit that suffered lethal damage during the turn is officially cleared from the board.
+* The turn passes to your opponent.
 
 ---
 
-### 4️⃣ End Phase
+## 🧱 Unit Reference
 
-* All units that took lethal damage are discarded
-* Your Energy resets to **0**
-* Your prepared attack is queued for your opponent
-
----
-
-## 🛡️ Combat Rules Summary
-
-| Stat             | Meaning                           |
-| ---------------- | --------------------------------- |
-| **Attack (ATK)** | Damage dealt when attacking       |
-| **Block (BLK)**  | Damage absorbed when blocking     |
-| **Health (HP)**  | Damage needed to destroy the unit |
-
-Only **ready units** can block.
-Exhausted units cannot block.
-
----
-
-# 🧱 UNIT REFERENCE
+| Stat | Meaning |
+|---|---|
+| **Attack (ATK)** | Damage added to the pool when preparing an attack. |
+| **Block (BLK)** | Damage absorbed when assigned to block. |
+| **Health (HP)** | Damage needed to destroy the unit. |
 
 ---
 
 ### 🟡 Miner
-
-**Cost:** 2 Gold  
-**Stats:** 0 ATK / 1 BLK / 1 HP
-
-**Ability — Mine (Exhaust):**  
-Spend **1 Energy → Gain 1 Gold**
-
-Your main economic engine.
-
----
+* **Cost:** 2 Gold
+* **Stats:** 0 ATK / 1 BLK / 1 HP
+* **Ability — Mine (Exhaust):** Spend **1 Energy → Gain 1 Gold**.
+* *Your main economic engine.*
 
 ### 🔵 Energizer
-
-**Cost:** 2 Gold  
-**Stats:** 0 ATK / 0 BLK / 2 HP
-
-**Ability — Generate (Exhaust):**  
-Gain **+1 Energy**
-
-Your energy engine.
-
----
+* **Cost:** 2 Gold
+* **Stats:** 0 ATK / 0 BLK / 2 HP
+* **Ability — Generate (Exhaust):** Gain **+1 Energy**.
+* *Your energy engine.*
 
 ### 🔴 Striker
-
-**Cost:** 3 Gold  
-**Stats:** 2 ATK / 0 BLK / 1 HP  
-**Attack Cost:** 1 Energy
-
-Cheap, fragile attacker. Requires energy to swing.
-
----
+* **Cost:** 3 Gold
+* **Stats:** 2 ATK / 0 BLK / 1 HP
+* **Attack Cost:** 1 Energy
+* *Cheap but potent attacker; requires energy to swing.*
 
 ### 🛡️ Guard
-
-**Cost:** 3 Gold  
-**Stats:** 1 ATK / 2 BLK / 2 HP
-
-Basic defensive unit.
-
----
+* **Cost:** 3 Gold
+* **Stats:** 1 ATK / 2 BLK / 2 HP
+* *Standard sturdy defensive unit.*
 
 ### 🧱 Wall
+* **Cost:** 3 Gold
+* **Stats:** 0 ATK / 2 BLK / 2 HP *(Limit 3 per player)*
+* **Special:** Walls **enter play ready**. They do not ready automatically at the start of a turn like other units.
+* **Ability — Repair (Exhausted, 1 Energy):** Ready this Wall so it can block again next turn.
+* *Instant but rigid defensive fortification.*
 
-**Cost:** 3 Gold  
-**Stats:** 0 ATK / 2 BLK / 2 HP (Limit 3 per player)
-
-**Special:** Walls do NOT ready automatically at the start of your turn.
-If used to block, the Wall becomes exhausted. To use it again, you must **Repair** it during your Action Phase.
-
-**Ability — Repair (Exhausted, 1 Energy):**  
-Ready this Wall so it can block again next turn.
-
----
-
-### ⚡ Overcharger
-
-**Cost:** 3 Gold  
-**Stats:** 0 ATK / 1 BLK / 2 HP
-
-**Ability — Overcharge (Exhaust, 1 Energy):**  
-Ready another unit.
-
-Allows double use of key units.
-
----
+### ⚡ Repeater
+* **Cost:** 3 Gold
+* **Stats:** 0 ATK / 1 BLK / 2 HP
+* **Ability — Overcharge (Exhaust, 1 Energy):** Ready another unit. Cannot target itself.
+* *Excellent utility to double-dip on key abilities or free up a blocker.*
 
 ### 💥 Volatile
+* **Cost:** 4 Gold
+* **Stats:** 5 ATK / 0 BLK / 2 HP
+* **Attack Cost:** 1 Energy
+* **Trait — Self-Destruct:** This unit sacrifices itself immediately when prepared for an attack, adding massive damage at the cost of its own life.
 
-**Cost:** 4 Gold  
-**Stats:** 5 ATK / 0 BLK / 2 HP
-
-**Trait — Self-Destruct:** If this unit is used to attack, it is destroyed at the end of the turn.
-Requires **1 Energy** to attack (like a Striker).
-
----
-
-### 🪵 Barrier
-
-**Cost:** 1 Gold  
-**Stats:** 0 ATK / 1 BLK / 1 HP
-
-**Trait — Fragile:** If this unit is used to block, it is destroyed at the end of the turn.
-
-Cheap disposable blocker.
+### 🚧 Barrier
+* **Cost:** 1 Gold
+* **Stats:** 0 ATK / 1 BLK / 1 HP
+* **Trait — Fragile:** If this unit participates in a Block, it is destroyed automatically at the end of the action.
+* *Ultra-cheap, disposable blocker to soak up hits.*
 
 ---
 
 ## 🧠 Strategy Tips
-
-* Early game is about balancing **Miner vs Energizer**
-* Too much economy = you die to Strikers
-* Too much defense = opponent outscales you
-* Overcharger creates explosive turns
-* Volatile punishes greedy opponents
-
----
-
-## 💻 Digital Command Reference
-
-| Command | Example | Effect |
-| --- | --- | --- |
-| `buy <unit>` | `buy miner` | Purchase a unit (Limit 1/turn) |
-| `use <unit> [count]`| `use e`, `use e 2` | Activate unit ability (finds ready units) |
-| `use <u1> on <u2>` | `use o on m` | Target another unit (Overcharger) |
-| `attack <unit> [#]` | `attack s` | Prepare units for combat |
-| `block <unit> [#]` | `block b` | Add blockers (Defense phase, cumulative) |
-| `block clear` | `block clear` | Reset assigned blockers |
-| `block end` | `block end` | Finish blocking & allow attacker damage |
-| `assign <target>` | `assign base 2`, `assign m 2` | Assign damage (Auto destroys units) |
-| `state` | `state` | Show full game board |
-| `end` | `end` | Progress to next phase |
-
-*Shortcuts: You can use the first letter of any unit (e.g., `buy m` for Miner).*
-
----
-
-## 📝 Design Notes
-
-This version is designed for pure strategy with **zero RNG**. Every win is earned through superior timing and resource allocation.
+* **Pace Your Economy:** Early game revolves around balancing Miners (Gold) and Energizers (Energy). Building too much economy leaves you vulnerable to a quick Striker rush!
+* **Resource Sync:** Having 3 Miners but 0 Energizers means you can't activate them. You must build energy generators alongside your gold miners.
+* **Repeater Utility:** The Repeater is highly versatile. It can ready a Miner twice in one turn, or unexhaust a crucial Guard to block an incoming attack.
+* **Breach Mindgames:** If you let some damage Breach, your opponent will target your most valuable units. Block wisely!

@@ -32,7 +32,7 @@ class Agent:
             self.turn_actions = []
             self._last_turn_key = turn_key
 
-        if game.phase == "Defense":
+        if game.phase == "Block":
             self.handle_defense(game, engine)
             
         if game.phase == "Assignment":
@@ -145,12 +145,12 @@ class Agent:
         is_aggressive = self.strategy_name == "Aggressive"
         
         # AI Target Priority:
-        # If can finish game OR is aggressive: Hit base immediately
+        # If can finish game: Hit base immediately
         # Otherwise: Kill units first, then base
-        if can_finish_game or is_aggressive:
-            # Go for the kill or play aggressively
+        if can_finish_game:
+            # Go for the kill
             assignments.append(("base", remaining))
-            self.log(f"Damage assigned to Base: {remaining} (Finishing move)" if can_finish_game else f"Damage assigned to Base: {remaining} (Aggressive)")
+            self.log(f"Damage assigned to Base: {remaining} (Finishing move)")
             return assignments
         
         # Standard priority: Kill units first
@@ -368,31 +368,27 @@ class Agent:
                 num_miners = active_player.lifetime_units.get("miner", 0)
                 
                 if not should_skip:
-                    if num_strikers < num_energizers:
-                        if num_strikers < 5:
-                            if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
-                                success, _ = engine.buy_unit("striker")
-                                if success: 
-                                    self.log("Bought Striker")
-                                    self.record_action("Bought Striker")
-                                    bought_this_step = True
+                    if game.turn_number == 1:
+                        if num_energizers < 5 and active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
+                            success, _ = engine.buy_unit("energizer")
+                            if success: 
+                                self.log("Bought Energizer (Turn 1 Opening)")
+                                self.record_action("Bought Energizer")
+                                bought_this_step = True
+                    elif (num_strikers + 1) == num_energizers:
+                        if num_energizers < 5 and active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
+                            success, _ = engine.buy_unit("energizer")
+                            if success: 
+                                self.log("Bought Energizer")
+                                self.record_action("Bought Energizer")
+                                bought_this_step = True
                     else:
-                        if num_energizers < 5:
-                             if active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
-                                success, _ = engine.buy_unit("energizer")
-                                if success: 
-                                    self.log("Bought Energizer")
-                                    self.record_action("Bought Energizer")
-                                    bought_this_step = True
-                
-                if not bought_this_step and num_miners < 5:
-                    target_unit = self.get_economic_target(active_player, "miner")
-                    if active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
-                        success, _ = engine.buy_unit(target_unit)
-                        if success: 
-                            self.log(f"Bought {target_unit}")
-                            self.record_action(f"Bought {target_unit}")
-                            bought_this_step = True
+                        if num_strikers < 5 and active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
+                            success, _ = engine.buy_unit("striker")
+                            if success: 
+                                self.log("Bought Striker")
+                                self.record_action("Bought Striker")
+                                bought_this_step = True
                 
                 if not bought_this_step:
                      if num_strikers < 5 and active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
