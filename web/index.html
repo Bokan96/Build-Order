@@ -181,6 +181,14 @@
                     <label>SFX Volume</label>
                     <input type="range" id="volume-sfx" min="0" max="100" value="50" step="10">
                 </div>
+                <div class="setting-item" id="setting-ai-speed">
+                    <label>AI Speed (VS AI only)</label>
+                    <div class="speed-options" style="display: flex; gap: 0.5rem; justify-content: space-between; margin-top: 0.5rem;">
+                        <button class="menu-btn secondary speed-btn" data-speed="1x" style="padding: 0.5rem 1rem; width: 30%;">1x</button>
+                        <button class="menu-btn secondary speed-btn" data-speed="2x" style="padding: 0.5rem 1rem; width: 30%;">2x</button>
+                        <button class="menu-btn secondary speed-btn" data-speed="Instant" style="padding: 0.5rem 1rem; width: 30%;">Instant</button>
+                    </div>
+                </div>
                 <div class="settings-actions">
                     <button id="btn-restart-game" class="menu-btn danger">RESTART GAME</button>
                     <button id="btn-exit-menu" class="menu-btn secondary" style="margin-top: 10px;">EXIT TO MAIN

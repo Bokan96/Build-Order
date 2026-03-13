@@ -602,9 +602,10 @@ class PrismataWeb {
             'agent.py'
         ];
 
+        const cacheBust = Date.now();
         for (const file of files) {
-            // Path is relative to web/
-            const response = await fetch(`../src/prismata/${file}`);
+            // Path is relative to web/ — cache-bust to always get latest
+            const response = await fetch(`../src/prismata/${file}?t=${cacheBust}`);
             const content = await response.text();
             this.pyodide.FS.writeFile(`/prismata/${file}`, content);
         }
@@ -1800,41 +1801,80 @@ class PrismataWeb {
 
                 // AI Action Phase
                 this.log("AI Opponent is thinking...", "system");
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 600));
 
                 try {
-                    const resultProxy = this.pyodide.runPython(`
-                        # AI executes actions
-                        summary = ai.execute_turn(game, engine)
-                        
-                        # End AI Action phase
-                        engine.end_phase()
-                        engine.end_turn()
-                        
-                        # Start player's turn
-                        engine.start_phase()
-                        engine.block_phase()
-                        
-                        res_msg = ""
-                        if game.phase == "Block":
-                            total_atk = sum(u.attack for u in engine.attacking_units)
-                            res_msg = f"INCOMING: {total_atk}"
-                        else:
-                            engine.action_phase()
-                        
-                        # Return summary to JS
-                        {"summary": summary, "msg": res_msg}
-                    `);
+                    const stepDelayMs = this.aiSpeed === '1x' ? 900 : this.aiSpeed === '2x' ? 500 : 0;
 
-                    const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
-                    resultProxy.destroy();
+                    if (stepDelayMs > 0) {
+                        // ===  STEP-BY-STEP AI REPLAY  ===
+                        const stepsProxy = this.pyodide.runPython(`
+                            global_steps_py = ai.plan_turn(game, engine)
+                            global_steps_py
+                        `);
+                        const numSteps = stepsProxy.length;
 
-                    if (result.summary && result.summary.length > 0) {
-                        this.log(`AI Actions: ${result.summary.join(", ")}`, 'opponent');
-                    }
+                        for (let i = 0; i < numSteps; i++) {
+                            const step = stepsProxy.get(i);
+                            if (step.get('type') === 'end') {
+                                step.destroy();
+                                break;
+                            }
+                            
+                            const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
+                            
+                            this.log(`🤖 AI: ${label}`, 'opponent');
+                            this.syncState();
+                            this.updateUI();
+                            step.destroy();
+                            await new Promise(resolve => setTimeout(resolve, stepDelayMs));
+                        }
+                        stepsProxy.destroy();
 
-                    if (result.msg) {
-                        this.log(`🚨 ${result.msg} damage incoming! Assign your blockers.`, "important");
+                        // 3. End turn and transition
+                        const endMsg = this.pyodide.runPython(`
+                            engine.end_phase()
+                            engine.end_turn()
+                            game.current_player.units_purchased = 0
+                            engine.start_phase()
+                            engine.block_phase()
+                            res_msg = ""
+                            if game.phase == "Block":
+                                total_atk = sum(u.attack for u in engine.attacking_units)
+                                res_msg = f"INCOMING: {total_atk}"
+                            else:
+                                engine.action_phase()
+                            res_msg
+                        `);
+                        
+                        if (endMsg) {
+                            this.log(`🚨 ${endMsg} damage incoming! Assign your blockers.`, 'important');
+                        }
+                    } else {
+                        // ===  INSTANT: single-batch (original behavior)  ===
+                        const resultProxy = this.pyodide.runPython(`
+                            summary = ai.execute_turn(game, engine)
+                            game.current_player.units_purchased = 0
+                            engine.end_phase()
+                            engine.end_turn()
+                            engine.start_phase()
+                            engine.block_phase()
+                            res_msg = ""
+                            if game.phase == "Block":
+                                total_atk = sum(u.attack for u in engine.attacking_units)
+                                res_msg = f"INCOMING: {total_atk}"
+                            else:
+                                engine.action_phase()
+                            {"summary": summary, "msg": res_msg}
+                        `);
+                        const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
+                        resultProxy.destroy();
+                        if (result.summary && result.summary.length > 0) {
+                            this.log(`AI Actions: ${result.summary.join(", ")}`, 'opponent');
+                        }
+                        if (result.msg) {
+                            this.log(`🚨 ${result.msg} damage incoming! Assign your blockers.`, 'important');
+                        }
                     }
 
                     this.syncState();
@@ -1846,10 +1886,10 @@ class PrismataWeb {
                 } catch (aiError) {
                     console.error("AI turn error:", aiError);
                     this.log("AI turn failed: " + aiError.message, "important");
-                    // Try to recover by just advancing to player turn
                     this.pyodide.runPython(`
                         game.current_player.units_purchased = 0
-                        engine.action_phase()
+                        if game.phase != "Action":
+                            engine.action_phase()
                     `);
                     this.syncState();
                     this.updateUI();
@@ -2523,8 +2563,39 @@ class PrismataWeb {
         this.elements.btnSettings.onclick = () => {
             this.sounds.play('CLICK');
             updateSettingsButtons(false);
+            
+            // Show/hide AI speed setting based on game mode
+            const aiSpeedItem = document.getElementById('setting-ai-speed');
+            if (aiSpeedItem) {
+                aiSpeedItem.style.display = this.gameMode === 'AI' ? '' : 'none';
+            }
+            
             this.elements.settingsModal.classList.remove('hidden');
         };
+
+        // Output logic for AI Speed setting
+        this.aiSpeed = 'Instant'; // default
+        document.querySelectorAll('.speed-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.sounds.play('CLICK');
+                this.aiSpeed = e.target.getAttribute('data-speed');
+                
+                // Update active visual state
+                document.querySelectorAll('.speed-btn').forEach(b => {
+                    b.classList.remove('primary');
+                    b.classList.add('secondary');
+                });
+                
+                e.target.classList.remove('secondary');
+                e.target.classList.add('primary');
+            });
+            
+            // Set initial visual state
+            if (btn.getAttribute('data-speed') === this.aiSpeed) {
+                btn.classList.add('primary');
+                btn.classList.remove('secondary');
+            }
+        });
 
         const btnMainSettings = document.getElementById('btn-main-settings');
         if (btnMainSettings) {

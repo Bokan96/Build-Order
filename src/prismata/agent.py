@@ -58,6 +58,206 @@ class Agent:
     def record_action(self, action):
         self.turn_actions.append(action)
 
+    def plan_turn(self, game, engine):
+        """
+        Compute what the AI wants to do this turn and return an ordered list
+        of step dicts WITHOUT executing them against the engine.
+        Each step dict: {'type': str, 'unit': str, 'number': int, 'label': str, ...}
+        Types: 'use_ability', 'buy', 'attack', 'end'
+        """
+        import copy
+        steps = []
+        active_player = game.current_player
+        strat = self.strategy_name
+
+        # --- Simulate resource state locally so we can plan without mutating ---
+        sim_gold   = active_player.gold
+        sim_energy = active_player.energy
+
+        # --- Energizers first ---
+        energizers = active_player.get_units_by_type("energizer")
+        for i, u in enumerate(energizers):
+            if not u.exhausted:
+                steps.append({'type': 'use_ability', 'unit': 'energizer', 'number': i + 1,
+                               'label': f'Energizer → +1 Energy'})
+                sim_energy += 1
+
+        # --- Wall repairs ---
+        enemy = game.other_player
+        enemy_potential_attack = self._get_opponent_threat(enemy)
+        my_total_block = sum(u.block for u in active_player.units if not u.exhausted)
+        is_threatened = enemy_potential_attack > my_total_block
+        exhausted_walls = [u for u in active_player.get_units_by_type("wall") if u.exhausted]
+        reserved = self._estimate_reserved_energy(active_player)
+        for i, u in enumerate(exhausted_walls):
+            should_repair = is_threatened or sim_energy > (reserved + 2)
+            if should_repair and sim_energy > 0:
+                steps.append({'type': 'use_ability', 'unit': 'wall', 'number': i + 1,
+                               'label': 'Repaired Wall'})
+                sim_energy -= 1
+
+        # --- Miners ---
+        miners = active_player.get_units_by_type("miner")
+        for i, u in enumerate(miners):
+            if sim_energy <= reserved: break
+            if active_player.gold > 5 and sim_energy <= reserved + 1: break
+            if not u.exhausted:
+                steps.append({'type': 'use_ability', 'unit': 'miner', 'number': i + 1,
+                               'label': 'Miner → +1 Gold'})
+                sim_gold += 1
+                sim_energy -= 1
+
+        # --- Repeaters ---
+        if strat in ("Aggressive", "Random"):
+            repeaters = [u for u in active_player.get_units_by_type("repeater") if not u.exhausted]
+            exhausted_allies = [u for u in active_player.units if u.exhausted and u.is_alive()]
+            for i, u in enumerate(repeaters):
+                if strat == "Aggressive" or __import__('random').random() < 0.5:
+                    if exhausted_allies:
+                        target = next((u2 for u2 in exhausted_allies if u2.name == "Striker"), exhausted_allies[0])
+                        steps.append({'type': 'use_ability', 'unit': 'repeater', 'number': i + 1,
+                                       'label': f'Repeater readies {target.name}'})
+
+        # --- Buying (up to 2 purchases, mirroring handle_action logic) ---
+        purchases = 0
+        enemy_block_sim = sum(u.block for u in enemy.units if not u.exhausted)
+
+        while purchases < 2:
+            bought = False
+            penalty = 1 if purchases > 0 else 0
+
+            # Shared barrier opener (non-aggressive)
+            if strat != "Aggressive" and active_player.lifetime_units.get("barrier", 0) < 2:
+                if self._sim_can_buy(sim_gold, sim_energy, "barrier", penalty):
+                    steps.append({'type': 'buy', 'unit': 'barrier', 'label': 'Bought Barrier'})
+                    sim_gold, sim_energy, purchases, bought = self._sim_deduct("barrier", sim_gold, sim_energy, penalty, purchases)
+                    if bought: continue
+
+            # Per-strategy purchasing (simplified planning version)
+            if not bought:
+                unit = self._pick_buy(strat, active_player, enemy, sim_gold, sim_energy, penalty,
+                                      enemy_block_sim, enemy_potential_attack, my_total_block)
+                if unit:
+                    steps.append({'type': 'buy', 'unit': unit, 'label': f'Bought {unit.capitalize()}'})
+                    sim_gold, sim_energy, purchases, bought = self._sim_deduct(unit, sim_gold, sim_energy, penalty, purchases)
+
+            if not bought:
+                break
+
+        # --- Attack ---
+        ready_units = [u for u in active_player.units if not u.exhausted and u.attack > 0]
+        attack_units = []
+        energy_avail = sim_energy
+        for u in ready_units:
+            should_attack = False
+            if u.name == "Striker": should_attack = True
+            elif u.name == "Guard" and (enemy_potential_attack == 0): should_attack = True
+            elif u.name == "Volatile" and u.attack > 0: should_attack = True
+            elif u.name not in ["Striker", "Guard", "Volatile"] and u.attack > 0: should_attack = True
+            if should_attack and energy_avail >= u.attack_cost:
+                attack_units.append(u)
+                energy_avail -= u.attack_cost
+        if attack_units:
+            total_dmg = sum(u.attack for u in attack_units)
+            unit_counts = {}
+            for u in attack_units:
+                unit_counts[u.name.lower()] = unit_counts.get(u.name.lower(), 0) + 1
+            desc = ", ".join(f"{c}x {t.capitalize()}" for t, c in unit_counts.items())
+            steps.append({'type': 'attack', 'units': list(unit_counts.items()),
+                           'label': f'Attacks with {total_dmg} damage ({desc})'})
+
+        steps.append({'type': 'end', 'label': 'End Turn'})
+        return steps
+
+    def _unit_cost(self, unit_name):
+        """Return (gold_cost, energy_cost) for a unit type without importing UNIT_COSTS."""
+        from .units import create_unit
+        u = create_unit(unit_name)
+        if u:
+            return u.gold_cost, u.energy_cost
+        return 999, 999
+
+    def _sim_can_buy(self, gold, energy, unit_name, penalty):
+        g, e = self._unit_cost(unit_name)
+        return gold >= g and energy >= (e + penalty)
+
+    def _sim_deduct(self, unit_name, gold, energy, penalty, purchases):
+        g, e = self._unit_cost(unit_name)
+        return gold - g, energy - (e + penalty), purchases + 1, True
+
+    def _pick_buy(self, strat, active_player, enemy, gold, energy, penalty, enemy_block, enemy_atk, my_block):
+        """Return the unit name the AI wants to buy, or None."""
+        lifetime = active_player.lifetime_units
+        num_strikers   = lifetime.get("striker", 0)
+        num_energizers = lifetime.get("energizer", 0)
+        num_miners     = lifetime.get("miner", 0)
+        num_walls      = lifetime.get("wall", 0)
+
+        def can(unit): return self._sim_can_buy(gold, energy, unit, penalty)
+
+        if strat == "Aggressive":
+            if num_strikers < 5 and can("striker"): return "striker"
+            if num_energizers < 5 and can("energizer"): return "energizer"
+        elif strat in ("Guard", "Wall"):
+            unit_to_buy = "wall" if strat == "Wall" else "guard"
+            if enemy_atk > my_block and can(unit_to_buy): return unit_to_buy
+            if gold > 6 and can("striker"): return "striker"
+            if num_miners < 5 and can("miner"): return "miner"
+            if num_strikers < 4 and can("striker"): return "striker"
+        elif strat == "Reactive":
+            if num_walls < 1 and can("wall"): return "wall"
+            if enemy_atk + 2 > my_block and can("wall"): return "wall"
+            if num_miners < 3 and can("miner"): return "miner"
+            if num_strikers < 3 and can("striker"): return "striker"
+        elif strat == "Tactical":
+            if enemy_atk > my_block and num_walls < 3 and can("wall"): return "wall"
+            if (num_miners < 4 or num_energizers < 3):
+                t = "miner" if num_miners <= num_energizers else "energizer"
+                if can(t): return t
+            if can("striker"): return "striker"
+        elif strat == "Random":
+            import random
+            opts = ["miner","energizer","striker","guard","wall","repeater","volatile"]
+            random.shuffle(opts)
+            for u in opts:
+                if lifetime.get(u, 0) < (3 if u == "wall" else 5) and can(u):
+                    return u
+        if can("striker"): return "striker"
+        if can("miner"):   return "miner"
+        return None
+
+    def execute_step(self, game, engine, step):
+        """Execute one planned action step against the live engine. Returns label."""
+        t = step.get('type')
+        if t == 'use_ability':
+            unit = step['unit']
+            num  = step['number']
+            if unit == 'repeater':
+                exhausted = [u for u in game.current_player.units if u.exhausted and u.is_alive()]
+                if exhausted:
+                    target = next((u for u in exhausted if u.name == "Striker"), exhausted[0])
+                    engine.use_ability(unit, num, target=target)
+            else:
+                engine.use_ability(unit, num)
+        elif t == 'buy':
+            engine.buy_unit(step['unit'])
+        elif t == 'attack':
+            engine.prepare_attackers(step['units'])
+        elif t == 'end':
+            pass  # handled by JS after all steps
+        return step.get('label', t)
+
+    def _estimate_reserved_energy(self, active_player):
+        strikers_ready = [u for u in active_player.get_units_by_type("striker") if not u.exhausted]
+        return min(active_player.energy, len(strikers_ready))
+
+    def _get_opponent_threat(self, opponent):
+        """Estimate the maximum potential attack the opponent can launch next turn."""
+        threat = sum(u.attack for u in opponent.units if not u.exhausted)
+        # Account for energy too (Strikers need 1 energy)
+        # This is a simple estimation
+        return threat
+
     def handle_defense(self, game, engine):
         defender = game.current_player
         strat = self.strategy_name
