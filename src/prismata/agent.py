@@ -135,7 +135,7 @@ class Agent:
             penalty = 1 if purchases > 0 else 0
 
             # Shared barrier opener (non-aggressive)
-            if strat != "Aggressive" and active_player.lifetime_units.get("barrier", 0) < 2:
+            if strat not in ("Aggressive", "Standard") and active_player.lifetime_units.get("barrier", 0) < 2:
                 if self._sim_can_buy(sim_gold, sim_energy, "barrier", penalty, active_player):
                     steps.append({'type': 'buy', 'unit': 'barrier', 'label': 'Bought Barrier'})
                     sim_gold, sim_energy, purchases, bought = self._sim_deduct("barrier", sim_gold, sim_energy, penalty, purchases)
@@ -581,7 +581,7 @@ class Agent:
             penalty = 1 if purchases == 1 else 0
             
             # General protection for most bots, but Aggressive might prioritize offense
-            if strat != "Aggressive" and active_player.lifetime_units.get("barrier", 0) < 2:
+            if strat not in ("Aggressive", "Standard") and active_player.lifetime_units.get("barrier", 0) < 2:
                 if active_player.gold >= 0 and active_player.energy >= (penalty + reserved_energy):
                     success, _ = engine.buy_unit("barrier")
                     if success: 
