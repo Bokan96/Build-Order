@@ -878,6 +878,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     white-space: nowrap;
     text-overflow: ellipsis;
     z-index: 10;
+    user-select: text; /* Allow selection of log text */
+    pointer-events: auto; /* Ensure events reach it for selection */
 }
 
 .combat-log.expanded {

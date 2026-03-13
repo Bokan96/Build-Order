@@ -276,9 +276,37 @@ class Agent:
             engine.buy_unit(step['unit'])
         elif t == 'attack':
             engine.prepare_attackers(step['units'])
+        elif t == 'block':
+            success, msg = engine.assign_blockers([(step['unit'], 1)])
         elif t == 'end':
             pass  # handled by JS after all steps
         return step.get('label', t)
+
+    def plan_defense(self, game, engine):
+        """Plan block steps for the step-by-step AI replay"""
+        steps = []
+        defender = game.current_player
+        total_atk = sum(u.attack for u in engine.attacking_units)
+        available_blockers = [u for u in defender.units if not u.exhausted and u.block > 0]
+        
+        def blocker_priority(unit):
+            if unit.name == "Barrier": return 3
+            elif unit.name == "Wall": return 2
+            else: return 1
+            
+        available_blockers.sort(key=blocker_priority)
+        
+        sim_blk = sum(u.block for u in engine.blocking_units)
+        
+        for u in available_blockers:
+            unblocked = max(0, total_atk - sim_blk)
+            if unblocked <= 0: break
+            
+            steps.append({'type': 'block', 'unit': u.name.lower(), 'label': f'Blocks with {u.name}'})
+            sim_blk += u.block
+            
+        steps.append({'type': 'end', 'label': 'Finished Blocking'})
+        return steps
 
     def _estimate_reserved_energy(self, active_player):
         strikers_ready = [u for u in active_player.get_units_by_type("striker") if not u.exhausted]
@@ -322,6 +350,9 @@ class Agent:
         for u in available_blockers:
             total_blk = sum(u.block for u in engine.blocking_units)
             unblocked = max(0, total_atk - total_blk)
+            if unblocked <= 0:
+                break
+            
             # The general strategy for all AI opponents is that they should 
             # always block if they have available blockers during opponents attack phase.
             

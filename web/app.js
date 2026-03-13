@@ -1755,19 +1755,61 @@ class PrismataWeb {
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
                     await new Promise(resolve => setTimeout(resolve, 800));
 
-                    const defenseResultProxy = this.pyodide.runPython(`
-                        # AI executes defense (blocking)
-                        summary = ai.execute_turn(game, engine)
-                        engine.finish_blocking()
-                        {"summary": summary, "phase": game.phase}
-                    `);
-                    const defenseResult = defenseResultProxy.toJs({ dict_converter: Object.fromEntries });
-                    defenseResultProxy.destroy();
-
-                    if (defenseResult.summary && defenseResult.summary.length > 0) {
-                        this.log(`AI blocked with: ${defenseResult.summary.join(', ')}`, "opponent");
+                    const stepDelayMs = this.aiSpeed === '1x' ? 900 : this.aiSpeed === '2x' ? 500 : 0;
+                    
+                    if (stepDelayMs > 0) {
+                        const stepsProxy = this.pyodide.runPython(`
+                            global_def_steps_py = ai.plan_defense(game, engine)
+                            global_def_steps_py
+                        `);
+                        const numSteps = stepsProxy.length;
+                        
+                        // We gather the summary while replaying the visual steps
+                        let blockSummary = [];
+                        
+                        for (let i = 0; i < numSteps; i++) {
+                            const step = stepsProxy.get(i);
+                            if (step.get('type') === 'end') {
+                                step.destroy();
+                                break;
+                            }
+                            
+                            const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_def_steps_py[${i}])`);
+                            this.log(`🤖 AI: ${label}`, 'opponent');
+                            this.sounds.play('BLOCK');
+                            blockSummary.push(label.replace('Blocks with', '').trim());
+                            
+                            this.syncState();
+                            this.updateUI();
+                            
+                            step.destroy();
+                            await new Promise(resolve => setTimeout(resolve, stepDelayMs));
+                        }
+                        stepsProxy.destroy();
+                        
+                        if (blockSummary.length > 0) {
+                            this.log(`AI blocked with: ${blockSummary.join(', ')}`, "opponent");
+                        } else {
+                            this.log("AI did not block.", "opponent");
+                        }
+                        
+                        this.pyodide.runPython(`engine.finish_blocking()`);
+                        
                     } else {
-                        this.log("AI did not block.", "opponent");
+                        const defenseResultProxy = this.pyodide.runPython(`
+                            # AI executes defense (blocking)
+                            summary = ai.execute_turn(game, engine)
+                            engine.finish_blocking()
+                            {"summary": summary, "phase": game.phase}
+                        `);
+                        const defenseResult = defenseResultProxy.toJs({ dict_converter: Object.fromEntries });
+                        defenseResultProxy.destroy();
+
+                        if (defenseResult.summary && defenseResult.summary.length > 0) {
+                            this.log(`AI blocked with: ${defenseResult.summary.join(', ')}`, "opponent");
+                        } else {
+                            this.log("AI did not block.", "opponent");
+                        }
                     }
 
                     this.syncState();
