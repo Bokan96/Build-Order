@@ -1801,7 +1801,7 @@ class PrismataWeb {
 
                 // AI Action Phase
                 this.log("AI Opponent is thinking...", "system");
-                await new Promise(resolve => setTimeout(resolve, 600));
+                await new Promise(resolve => setTimeout(resolve, 2000));
 
                 try {
                     const stepDelayMs = this.aiSpeed === '1x' ? 900 : this.aiSpeed === '2x' ? 500 : 0;
@@ -2349,7 +2349,7 @@ class PrismataWeb {
         this.elements.btnBuy.disabled = true;
 
         this.log("AI Opponent is thinking...", "system");
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         try {
             const resultProxy = this.pyodide.runPython(`
@@ -2634,7 +2634,7 @@ class PrismataWeb {
         };
 
         // Output logic for AI Speed setting
-        this.aiSpeed = 'Instant'; // default
+        this.aiSpeed = '1x'; // default
         document.querySelectorAll('.speed-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 this.sounds.play('CLICK');

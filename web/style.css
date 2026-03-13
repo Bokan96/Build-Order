@@ -31,7 +31,18 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    cursor: none !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    * {
+        cursor: none !important;
+    }
+}
+
+@media (hover: none), (pointer: coarse) {
+    #custom-cursor {
+        display: none !important;
+    }
 }
 
 button {
