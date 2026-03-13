@@ -653,7 +653,7 @@ class PrismataWeb {
             p1Name = customName || "Player";
         }
 
-        const aiType = this.selectedAI || 'Aggressive';
+        const aiType = this.selectedAI || 'Standard';
 
         // Initialize GameState and GameEngine instances in Python
         this.pyodide.runPython(`
@@ -1232,23 +1232,19 @@ class PrismataWeb {
                         target_unit = units_of_type[unit_idx]
                         if not target_unit.exhausted and target_unit.is_alive():
                             # Add to prepared squad (to attack next turn)
-                            if target_unit not in engine.prepared_squad:
-                                if game.current_player.energy >= target_unit.attack_cost:
-                                    engine.prepared_squad.append(target_unit)
-                                    game.current_player.energy -= target_unit.attack_cost
-                                    target_unit.exhausted = True
-                                    if target_unit.name == "Volatile":
-                                        target_unit.take_damage(99)
-                                        game.current_player.remove_dead_units()
-                                    game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
-                                    success = True
-                                    msg = f"Prepared {target_unit.name} for attack"
-                                else:
-                                    success = False
-                                    msg = "Not enough energy"
+                            if game.current_player.energy >= target_unit.attack_cost:
+                                engine.prepared_squad.append(target_unit)
+                                game.current_player.energy -= target_unit.attack_cost
+                                target_unit.exhausted = True
+                                if target_unit.name == "Volatile":
+                                    target_unit.take_damage(99)
+                                    game.current_player.remove_dead_units()
+                                game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
+                                success = True
+                                msg = f"Prepared {target_unit.name} for attack"
                             else:
                                 success = False
-                                msg = "Unit already attacking"
+                                msg = "Not enough energy"
                         else:
                             success = False
                             msg = "Unit is exhausted or dead"
@@ -1293,6 +1289,10 @@ class PrismataWeb {
             if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
                 const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
                 const abilitySuccess = await this.processActionResult(resultProxy, animateCard);
+                
+                if (abilitySuccess) {
+                    this.sounds.play('CLICK');
+                }
 
                 // Send to remote player
                 if (abilitySuccess && this.gameMode === 'ONLINE' && !this.isRemoteAction) {
@@ -1824,6 +1824,14 @@ class PrismataWeb {
                             const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
                             
                             this.log(`🤖 AI: ${label}`, 'opponent');
+                            
+                            // Visual/Audio cues for AI Actions
+                            if (label.includes('Bought')) {
+                                this.sounds.play('SHOP_OPEN');
+                            } else if (label.includes('Energizer') || label.includes('Miner') || label.includes('Wall') || label.includes('Repeater')) {
+                                this.sounds.play('CLICK');
+                            }
+
                             this.syncState();
                             this.updateUI();
                             step.destroy();
