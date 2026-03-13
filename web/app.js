@@ -768,6 +768,25 @@ class PrismataWeb {
         const emoji = phaseEmojis[this.state.phase] || (this.state.gameOver ? '🏆' : '🎮');
         document.title = `Build Order | ${playerShort} ${this.state.phase} ${emoji}`;
 
+        // Trigger Turn Transition Banner
+        if (this.currentTurnPlayer !== this.state.currentPlayer) {
+            this.currentTurnPlayer = this.state.currentPlayer;
+            const banner = document.getElementById('turn-banner');
+            const bannerText = document.getElementById('turn-banner-text');
+            if (banner && bannerText) {
+                bannerText.textContent = `${this.state.currentPlayer.toUpperCase()}'S TURN`;
+                
+                // Reset animation by cloning and replacing node
+                const newBanner = banner.cloneNode(true);
+                banner.parentNode.replaceChild(newBanner, banner);
+                
+                newBanner.classList.remove('hidden');
+                setTimeout(() => {
+                    newBanner.classList.add('hidden');
+                }, 2000); // 2s is the duration of bannerIn animation
+            }
+        }
+
         // Update Stats
         this.updatePlayerStats('p1', this.state.p1);
         this.updatePlayerStats('p2', this.state.p2);
@@ -2402,20 +2421,20 @@ class PrismataWeb {
                 // Create Ripple Effect
                 const ripple = document.createElement('div');
                 ripple.className = 'click-ripple';
-                ripple.style.left = `${e.clientX} px`;
-                ripple.style.top = `${e.clientY} px`;
+                ripple.style.left = `${e.clientX}px`;
+                ripple.style.top = `${e.clientY}px`;
                 document.body.appendChild(ripple);
 
                 // Play particles
                 for (let i = 0; i < 5; i++) {
                     const particle = document.createElement('div');
                     particle.className = 'click-particle';
-                    particle.style.left = `${e.clientX} px`;
-                    particle.style.top = `${e.clientY} px`;
+                    particle.style.left = `${e.clientX}px`;
+                    particle.style.top = `${e.clientY}px`;
                     const angle = Math.random() * Math.PI * 2;
                     const distance = 20 + Math.random() * 30;
-                    particle.style.setProperty('--tx', `${Math.cos(angle) * distance} px`);
-                    particle.style.setProperty('--ty', `${Math.sin(angle) * distance} px`);
+                    particle.style.setProperty('--tx', `${Math.cos(angle) * distance}px`);
+                    particle.style.setProperty('--ty', `${Math.sin(angle) * distance}px`);
                     document.body.appendChild(particle);
                     setTimeout(() => particle.remove(), 600);
                 }
