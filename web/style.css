@@ -600,6 +600,15 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     border-color: var(--accent-red) !important;
 }
 
+.unit-column.lethal-target-column {
+    filter: drop-shadow(0 0 10px rgba(255, 60, 60, 0.4));
+    transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.unit-column.lethal-target-column:hover {
+    filter: drop-shadow(0 0 20px rgba(255, 60, 60, 0.8));
+}
+
 .unit-card.exhausted.lethal-target {
     filter: sepia(1) saturate(5) hue-rotate(-50deg) brightness(1.2) !important;
 }

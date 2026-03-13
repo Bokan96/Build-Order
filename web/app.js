@@ -999,27 +999,13 @@ class PrismataWeb {
                 card.style.zIndex = indexInType;
                 const imgUrl = this.unitImages[unit.type];
 
-                // Lethal overlay (Breach Phase) - number above sword, thicker outline
-                let overlayHtml = '';
-                if (this.state.phase === 'Breach' && !isFriendly && unit.hp > 0) {
-                    const combat = this.state.combat;
-                    const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
-                    if (unit.hp <= remaining) {
-                        const rotateFix = isExhausted ? 'transform: rotate(-90deg);' : '';
-                        const numStyle = 'font-size:2rem;font-weight:900;line-height:1;color:#fff;' +
-                            'text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000,' +
-                            '0 0 10px rgba(255,60,60,1);letter-spacing:1px;';
-                        overlayHtml = `<div class="lethal-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,68,68,0.25);color:white;display:flex;align-items:center;justify-content:center;z-index:20;pointer-events:none;user-select:none;"><span style="${rotateFix} display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="${numStyle}">${unit.hp}</span><span style="font-size:2.2rem;line-height:1;">⚔️</span></span></div>`;
-                        card.classList.add('lethal-target');
-                    }
-                }
-
                 // Block overlay (Block Phase) - block value above shield, blue, only eligible units
+                let overlayHtml = '';
                 if (this.state.phase === 'Block' && isFriendly && !unit.exhausted && unit.blk > 0) {
                     const blkStyle = 'font-size:2rem;font-weight:900;line-height:1;color:#a0d4ff;' +
                         'text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000,' +
                         '0 0 10px rgba(0,150,255,0.9);letter-spacing:1px;';
-                    overlayHtml += `<div class="block-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,100,255,0.15);display:flex;align-items:center;justify-content:center;z-index:20;pointer-events:none;user-select:none;"><span style="display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="${blkStyle}">${unit.blk}</span><span style="font-size:2.2rem;line-height:1;">🛡️</span></span></div>`;
+                    overlayHtml = `<div class="block-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,100,255,0.15);display:flex;align-items:center;justify-content:center;z-index:20;pointer-events:none;user-select:none;"><span style="display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="${blkStyle}">${unit.blk}</span><span style="font-size:2.2rem;line-height:1;">🛡️</span></span></div>`;
                 }
 
                 card.innerHTML = `
@@ -1098,9 +1084,10 @@ class PrismataWeb {
                     }
                 }
 
+                // Breach clicking is handled by the column instead
                 // Breach allows ANY unit (ignore interactiveIndex)
                 if (canDamageInBreach) {
-                    isInteractive = true;
+                    // Do nothing for 'isInteractive' on individual cards
                 }
 
                 if (isInteractive) {
@@ -1130,6 +1117,53 @@ class PrismataWeb {
 
                 column.appendChild(card);
             });
+            
+            // Check if column is vulnerable in breach
+            if (!isFriendly && this.state.phase === 'Breach') {
+                const combat = this.state.combat;
+                const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
+                let canDamageColumn = false;
+                let hpNeededToKill = 0;
+                let topUnitInColumn = null;
+                let topUnitIndex = -1;
+                
+                // Find top-most alive unit
+                for (let i = unitsByType[type].length - 1; i >= 0; i--) {
+                    const u = unitsByType[type][i];
+                    if (u.hp > 0 && u.hp <= remaining) {
+                        canDamageColumn = true;
+                        hpNeededToKill = u.hp;
+                        topUnitInColumn = u;
+                        topUnitIndex = i + 1;
+                        break;
+                    }
+                }
+                
+                if (canDamageColumn) {
+                    column.classList.add('lethal-target-column');
+                    column.style.cursor = 'pointer';
+                    const colMarker = document.createElement('div');
+                    colMarker.className = 'column-breach-marker';
+                    colMarker.style.textAlign = 'center';
+                    colMarker.style.marginTop = '4px';
+                    colMarker.style.fontSize = '1.3rem';
+                    colMarker.style.fontWeight = '900';
+                    colMarker.style.color = '#fff';
+                    colMarker.style.textShadow = '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 8px rgba(255, 60, 60, 1)';
+                    colMarker.style.paddingTop = '60px'; // To clear underneath cards properly due to negative margins
+                    colMarker.innerHTML = `${hpNeededToKill} ⚔️`;
+                    
+                    // Hover effect listener onto the column itself
+                    column.addEventListener('mouseenter', () => { column.style.transform = 'translateY(-5px)'; });
+                    column.addEventListener('mouseleave', () => { column.style.transform = ''; });
+                    
+                    column.appendChild(colMarker);
+                    column.onclick = (e) => {
+                        e.stopPropagation();
+                        this.handleAssignDamage(topUnitInColumn, topUnitIndex, isP1Units, column);
+                    };
+                }
+            }
 
             container.appendChild(column);
         });
@@ -1552,6 +1586,7 @@ class PrismataWeb {
         resultProxy.destroy();
 
         if (result.success) {
+            this.handleUnitMouseLeave(); // Ensure hover tooltip is cleared
             this.log(`Destroyed ${unit.name} #${unitNumber}`, 'important');
             this.sounds.play('DESTROY');
 
@@ -1871,7 +1906,7 @@ class PrismataWeb {
                             
                             // Visual/Audio cues for AI Actions
                             if (label.includes('Bought')) {
-                                this.sounds.play('SHOP_OPEN');
+                                this.sounds.play('BUY');
                             } else if (label.includes('Energizer') || label.includes('Miner') || label.includes('Wall') || label.includes('Repeater')) {
                                 this.sounds.play('CLICK');
                             }
@@ -2028,11 +2063,12 @@ class PrismataWeb {
                 : col.querySelector('.unit-card:last-child');
 
             if (target) {
-                target.classList.remove('unit-shine');
-                void target.offsetWidth; // Force CSS reflow to restart animation
-                target.classList.add('unit-shine');
-                // Optional: remove class after animation to clean up
-                setTimeout(() => target.classList.remove('unit-shine'), 900);
+                setTimeout(() => {
+                    target.classList.remove('unit-shine');
+                    void target.offsetWidth; // Force CSS reflow to restart animation
+                    target.classList.add('unit-shine');
+                    setTimeout(() => target.classList.remove('unit-shine'), 900);
+                }, 300);
             }
             break;
         }
