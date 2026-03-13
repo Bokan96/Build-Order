@@ -81,6 +81,8 @@ class PrismataWeb {
     }
 
     async init() {
+        this.initCustomCursor();
+        
         try {
             console.log("Initializing Pyodide... [VERSION 0.5.2 - SNAPPY UPDATE]");
             this.updateLoadingText("Downloading Python runtime...");
@@ -877,7 +879,7 @@ class PrismataWeb {
             // Animated count-down: update text gradually, colour change only at 0
             this._animateDecrement(el, oldVal, checkVal);
             el.classList.add('resource-drop');
-            setTimeout(() => el.classList.remove('resource-drop'), 1000);
+            setTimeout(() => el.classList.remove('resource-drop'), 600);
         } else {
             el.textContent = checkVal;
         }
@@ -888,7 +890,7 @@ class PrismataWeb {
         if (el._decrementInterval) clearInterval(el._decrementInterval);
         const diff = Math.abs(from - to);
         const steps = Math.min(diff, 20);
-        const stepDur = 1000 / steps;
+        const stepDur = 600 / steps;
         let cur = from;
         const dir = to < from ? -1 : 1;
         el._decrementInterval = setInterval(() => {
@@ -1368,7 +1370,8 @@ class PrismataWeb {
             const topCard = cards[cards.length - 1];
 
             if (isSelfColumn) {
-                columnEl.style.cursor = 'pointer';
+                // cursor removed
+                columnEl.style.cursor = '';
                 // Override top card onclick to cancel
                 topCard.onclick = (e) => {
                     e.stopPropagation();
@@ -1387,7 +1390,8 @@ class PrismataWeb {
                     this.executeTargetedAbility(colType, firstExhaustedNum);
                 };
             } else {
-                columnEl.style.cursor = 'not-allowed';
+                // cursor removed
+                columnEl.style.cursor = '';
                 topCard.onclick = (e) => { e.stopPropagation(); };
             }
         });
@@ -1989,7 +1993,8 @@ class PrismataWeb {
                     this.sounds.play('ERROR');
                 };
             } else {
-                item.style.cursor = `url('assets/UI/cursor-pointer.svg') 5 5, auto !important`;
+                // cursor removed
+                item.style.cursor = '';
                 item.onclick = (e) => {
                     e.stopPropagation();
                     // Double check in case UI is stale, but backend handles it too
@@ -2593,6 +2598,46 @@ class PrismataWeb {
         if (this.elements.endgameEnergy) this.elements.endgameEnergy.textContent = winnerState ? winnerState.energy : 0;
 
         if (this.elements.endgameModal) this.elements.endgameModal.classList.remove('hidden');
+    }
+    initCustomCursor() {
+        const cursor = document.getElementById('custom-cursor');
+        if (!cursor) return;
+
+        let mouseX = -100;
+        let mouseY = -100;
+        let scale = 1;
+
+        const updateCursor = () => {
+            cursor.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0) scale(${scale})`;
+            requestAnimationFrame(updateCursor);
+        };
+        requestAnimationFrame(updateCursor);
+
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            if (!cursor.classList.contains('active')) {
+                cursor.classList.add('active');
+            }
+        }, { passive: true });
+
+        window.addEventListener('mousedown', () => {
+            cursor.classList.add('holding');
+        }, { passive: true });
+
+        window.addEventListener('mouseup', () => {
+            cursor.classList.remove('holding');
+        }, { passive: true });
+
+        // Delegation for hover scaling - using mouseover to handle dynamically added elements
+        document.addEventListener('mouseover', (e) => {
+            const interactable = e.target.closest('button, .unit-card, .shop-list-item, .ai-choice, .close-btn, .icon-btn, .log-toggle-btn, .action-btn, .copy-btn, .settings-actions .menu-btn');
+            if (interactable) {
+                scale = 1.25;
+            } else {
+                scale = 1;
+            }
+        }, { passive: true });
     }
 }
 
