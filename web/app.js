@@ -1806,6 +1806,8 @@ class PrismataWeb {
                 try {
                     const stepDelayMs = this.aiSpeed === '1x' ? 900 : this.aiSpeed === '2x' ? 500 : 0;
 
+                    let boughtUnits = [];
+
                     if (stepDelayMs > 0) {
                         // ===  STEP-BY-STEP AI REPLAY  ===
                         const stepsProxy = this.pyodide.runPython(`
@@ -1834,6 +1836,15 @@ class PrismataWeb {
 
                             this.syncState();
                             this.updateUI();
+
+                            // Trigger shine if a unit was bought
+                            if (label.includes('Bought')) {
+                                const boughtMatch = label.match(/Bought\s+(\w+)/i);
+                                if (boughtMatch && boughtMatch[1]) {
+                                    this._triggerBuyAnimation(boughtMatch[1].toLowerCase());
+                                }
+                            }
+
                             step.destroy();
                             await new Promise(resolve => setTimeout(resolve, stepDelayMs));
                         }
@@ -1877,8 +1888,17 @@ class PrismataWeb {
                         `);
                         const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
                         resultProxy.destroy();
+
                         if (result.summary && result.summary.length > 0) {
                             this.log(`AI Actions: ${result.summary.join(", ")}`, 'opponent');
+                            result.summary.forEach(action => {
+                                if (action.includes('Bought')) {
+                                    const boughtMatch = action.match(/Bought\s+(\w+)/i);
+                                    if (boughtMatch && boughtMatch[1]) {
+                                        boughtUnits.push(boughtMatch[1].toLowerCase());
+                                    }
+                                }
+                            });
                         }
                         if (result.msg) {
                             this.log(`🚨 ${result.msg} damage incoming! Assign your blockers.`, 'important');
@@ -1887,6 +1907,10 @@ class PrismataWeb {
 
                     this.syncState();
                     this.updateUI();
+
+                    if (boughtUnits.length > 0) {
+                        boughtUnits.forEach(u => this._triggerBuyAnimation(u));
+                    }
 
                     if (this.state.phase !== 'Block') {
                         this.log("Your turn!", "player1");
@@ -1937,10 +1961,38 @@ class PrismataWeb {
 
             this.syncState();
             this.updateUI();
+            this._triggerBuyAnimation(type);
             this.hideShop();
         } else {
             this.sounds.play('ERROR');
             this.log(`Error: ${result.msg}`, 'important');
+        }
+    }
+
+    _triggerBuyAnimation(unitType) {
+        // AI purchases during AI turn go to AI area (P2 usually, or whoever is current)
+        const isP1Turn = this.state.currentPlayer === this.state.p1.name;
+        const area = isP1Turn ? this.elements.p1Units : this.elements.p2Units;
+
+        const columns = area.querySelectorAll('.unit-column');
+        for (const col of columns) {
+            const anyCard = col.querySelector(`[data-type="${unitType}"]`);
+            if (!anyCard) continue;
+
+            // Exhausted cards are the newest units (except Walls which aren't exhausted, so fallback to last child)
+            const exhaustedCards = Array.from(col.querySelectorAll('.unit-card.exhausted'));
+            const target = exhaustedCards.length > 0
+                ? exhaustedCards[exhaustedCards.length - 1]
+                : col.querySelector('.unit-card:last-child');
+
+            if (target) {
+                target.classList.remove('unit-shine');
+                void target.offsetWidth; // Force CSS reflow to restart animation
+                target.classList.add('unit-shine');
+                // Optional: remove class after animation to clean up
+                setTimeout(() => target.classList.remove('unit-shine'), 900);
+            }
+            break;
         }
     }
 

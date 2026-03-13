@@ -14,11 +14,19 @@ class Agent:
         # Console output for AI actions is handled by summaries in main.py
 
     def get_economic_target(self, active_player, preferred_unit):
-        """Rule: Buy energizers instead of Miners if num_energizers < num_miners."""
+        """Rule: Prefer energizers over miners when miners >= energizers, or when energy-costing units exist."""
         if preferred_unit == "miner":
             num_miners = len(active_player.get_units_by_type("miner"))
             num_energizers = len(active_player.get_units_by_type("energizer"))
-            if num_energizers < num_miners:
+            has_energy_consumers = (
+                len(active_player.get_units_by_type("striker")) > 0 or
+                len(active_player.get_units_by_type("wall")) > 0
+            )
+            # Keep miners no more than 1 ahead of energizers
+            if num_miners - num_energizers >= 1:
+                return "energizer"
+            # If we have energy-spending units, prefer energizers
+            if has_energy_consumers and num_energizers <= num_miners:
                 return "energizer"
         return preferred_unit
 
@@ -128,7 +136,7 @@ class Agent:
 
             # Shared barrier opener (non-aggressive)
             if strat != "Aggressive" and active_player.lifetime_units.get("barrier", 0) < 2:
-                if self._sim_can_buy(sim_gold, sim_energy, "barrier", penalty):
+                if self._sim_can_buy(sim_gold, sim_energy, "barrier", penalty, active_player):
                     steps.append({'type': 'buy', 'unit': 'barrier', 'label': 'Bought Barrier'})
                     sim_gold, sim_energy, purchases, bought = self._sim_deduct("barrier", sim_gold, sim_energy, penalty, purchases)
                     if bought: continue
@@ -177,7 +185,14 @@ class Agent:
             return u.gold_cost, u.energy_cost
         return 999, 999
 
-    def _sim_can_buy(self, gold, energy, unit_name, penalty):
+    def _unit_available(self, active_player, unit_name):
+        """Return True if the buy-limit cap for this unit type has not been reached."""
+        cap = 3 if unit_name.lower() == "wall" else 5
+        return active_player.lifetime_units.get(unit_name.lower(), 0) < cap
+
+    def _sim_can_buy(self, gold, energy, unit_name, penalty, active_player=None):
+        if active_player is not None and not self._unit_available(active_player, unit_name):
+            return False
         g, e = self._unit_cost(unit_name)
         return gold >= g and energy >= (e + penalty)
 
@@ -193,7 +208,8 @@ class Agent:
         num_miners     = lifetime.get("miner", 0)
         num_walls      = lifetime.get("wall", 0)
 
-        def can(unit): return self._sim_can_buy(gold, energy, unit, penalty)
+        # can() now also checks lifetime availability
+        def can(unit): return self._sim_can_buy(gold, energy, unit, penalty, active_player)
 
         if strat == "Aggressive":
             if num_strikers < 5 and can("striker"): return "striker"
@@ -202,12 +218,14 @@ class Agent:
             unit_to_buy = "wall" if strat == "Wall" else "guard"
             if enemy_atk > my_block and can(unit_to_buy): return unit_to_buy
             if gold > 6 and can("striker"): return "striker"
-            if num_miners < 5 and can("miner"): return "miner"
+            eco = self.get_economic_target(active_player, "miner")
+            if num_miners < 5 and can(eco): return eco
             if num_strikers < 4 and can("striker"): return "striker"
         elif strat == "Reactive":
             if num_walls < 1 and can("wall"): return "wall"
             if enemy_atk + 2 > my_block and can("wall"): return "wall"
-            if num_miners < 3 and can("miner"): return "miner"
+            eco = self.get_economic_target(active_player, "miner")
+            if num_miners < 3 and can(eco): return eco
             if num_strikers < 3 and can("striker"): return "striker"
         elif strat == "Tactical":
             if enemy_atk > my_block and num_walls < 3 and can("wall"): return "wall"
@@ -215,13 +233,28 @@ class Agent:
                 t = "miner" if num_miners <= num_energizers else "energizer"
                 if can(t): return t
             if can("striker"): return "striker"
+        elif strat == "Standard":
+            live_miners     = len(active_player.get_units_by_type("miner"))
+            live_energizers = len(active_player.get_units_by_type("energizer"))
+            has_eco_consumers = (
+                len(active_player.get_units_by_type("striker")) > 0 or
+                len(active_player.get_units_by_type("wall")) > 0
+            )
+            # Prefer energizer if miners exceed energizers or we have energy users
+            if live_miners - live_energizers >= 1 or has_eco_consumers:
+                if num_energizers < 4 and can("energizer"): return "energizer"
+            elif live_miners <= live_energizers and num_miners < 3:
+                if can("miner"): return "miner"
+            if num_energizers < 4 and can("energizer"): return "energizer"
+            if num_strikers < 3 and can("striker"): return "striker"
         elif strat == "Random":
             import random
             opts = ["miner","energizer","striker","guard","wall","repeater","volatile"]
             random.shuffle(opts)
             for u in opts:
-                if lifetime.get(u, 0) < (3 if u == "wall" else 5) and can(u):
+                if can(u):  # can() already checks the cap
                     return u
+        # Fallback — can() checks cap so these are safe
         if can("striker"): return "striker"
         if can("miner"):   return "miner"
         return None
@@ -273,14 +306,15 @@ class Agent:
         # 3. Walls (cost energy to repair)
         # 4. Barriers (destroyed on block - last resort)
         def blocker_priority(unit):
+            # 1: Free to un-exhaust (Guards, Miners, Repeaters, Strikers) — use first
+            # 2: Walls — cost 1 energy to repair/un-exhaust
+            # 3: Barriers — destroyed upon blocking, absolute last resort
             if unit.name == "Barrier":
-                return 4  # Last resort - destroyed on block
+                return 3
             elif unit.name == "Wall":
-                return 3  # Avoid - costs energy to repair
-            elif unit.name in ["Miner", "Energizer"]:
-                return 2  # Preserve economic units
+                return 2
             else:
-                return 1  # Guards, Strikers, etc. - use first
+                return 1  # Guards, Miners, Repeaters, Strikers, etc.
         
         available_blockers.sort(key=blocker_priority)
         
@@ -772,7 +806,54 @@ class Agent:
                             self.log("Tactical: Economy secure, building counter-attack")
                             self.record_action("Bought Striker")
                             bought_this_step = True
-            
+
+            elif strat == "Standard":
+                # STANDARD: Balanced economy — keep miners/energizers in parity, attack when ready
+                num_miners     = active_player.lifetime_units.get("miner", 0)
+                num_energizers = active_player.lifetime_units.get("energizer", 0)
+                num_strikers   = active_player.lifetime_units.get("striker", 0)
+                live_miners     = len(active_player.get_units_by_type("miner"))
+                live_energizers = len(active_player.get_units_by_type("energizer"))
+                has_energy_consumers = (
+                    len(active_player.get_units_by_type("striker")) > 0 or
+                    len(active_player.get_units_by_type("wall")) > 0
+                )
+
+                # Energizer first if miners exceed energizers OR we have energy consumers
+                if live_miners - live_energizers >= 1 or has_energy_consumers:
+                    if num_energizers < 4 and active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit("energizer")
+                        if success:
+                            self.log("Standard: Buying Energizer (economy balance)")
+                            self.record_action("Bought Energizer")
+                            bought_this_step = True
+
+                # Buy a miner only when energizer count can support it
+                if not bought_this_step and live_miners <= live_energizers and num_miners < 3:
+                    if active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit("miner")
+                        if success:
+                            self.log("Standard: Buying Miner")
+                            self.record_action("Bought Miner")
+                            bought_this_step = True
+
+                # Fallback: top up energizers then strikers
+                if not bought_this_step and num_energizers < 4:
+                    if active_player.gold >= 2 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit("energizer")
+                        if success:
+                            self.log("Standard: Energizer top-up")
+                            self.record_action("Bought Energizer")
+                            bought_this_step = True
+
+                if not bought_this_step and num_strikers < 3:
+                    if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit("striker")
+                        if success:
+                            self.log("Standard: Buying Striker")
+                            self.record_action("Bought Striker")
+                            bought_this_step = True
+
             # BARRIER TACTIC: Only buy if we have spare resources after doing our initial purchase
             # Condition: purchases > 0, gold > 3, and sufficient energy for second unit + reserved
             if not bought_this_step and purchases > 0 and len(active_player.get_units_by_type("barrier")) < 5:
