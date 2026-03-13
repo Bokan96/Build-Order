@@ -1010,8 +1010,6 @@ class PrismataWeb {
 
                 card.innerHTML = `
                         <div class="unit-art" style="background-image: url('${imgUrl}')"></div>
-                        ${isAttacking ? '<div class="combat-badge attacking">⚔️</div>' : ''}
-                        ${isBlocking ? '<div class="combat-badge blocking">🛡️</div>' : ''}
                         ${overlayHtml}
                     `;
 
@@ -1144,13 +1142,16 @@ class PrismataWeb {
                     column.style.cursor = 'pointer';
                     const colMarker = document.createElement('div');
                     colMarker.className = 'column-breach-marker';
+                    colMarker.style.position = 'absolute';
+                    colMarker.style.bottom = '-35px';
+                    colMarker.style.left = '50%';
+                    colMarker.style.transform = 'translateX(-50%)';
+                    colMarker.style.width = '100%';
                     colMarker.style.textAlign = 'center';
-                    colMarker.style.marginTop = '4px';
                     colMarker.style.fontSize = '1.3rem';
                     colMarker.style.fontWeight = '900';
                     colMarker.style.color = '#fff';
                     colMarker.style.textShadow = '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 8px rgba(255, 60, 60, 1)';
-                    colMarker.style.paddingTop = '60px'; // To clear underneath cards properly due to negative margins
                     colMarker.innerHTML = `${hpNeededToKill} ⚔️`;
                     
                     // Hover effect listener onto the column itself
@@ -1208,6 +1209,13 @@ class PrismataWeb {
         } else {
             this.elements.btnEnd.style.opacity = '1';
             this.elements.btnBuy.style.opacity = '1';
+        }
+        
+        // Disable and completely hide SHOP button during Block and Breach
+        if (phase === 'Block' || phase === 'Breach') {
+            this.elements.btnBuy.style.display = 'none';
+        } else {
+            this.elements.btnBuy.style.display = '';
         }
 
         if (phase === 'Block') {
@@ -1790,7 +1798,11 @@ class PrismataWeb {
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
                     await new Promise(resolve => setTimeout(resolve, 800));
 
-                    const stepDelayMs = this.aiSpeed === '1x' ? 900 : this.aiSpeed === '2x' ? 500 : 0;
+                    // Wait for the "AI'S TURN" banner animation to finish (approx 2s)
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    const speedMap = {'0': 900, '1': 500, '2': 0};
+                    const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
                     
                     if (stepDelayMs > 0) {
                         const stepsProxy = this.pyodide.runPython(`
@@ -1881,7 +1893,8 @@ class PrismataWeb {
                 await new Promise(resolve => setTimeout(resolve, 2000));
 
                 try {
-                    const stepDelayMs = this.aiSpeed === '1x' ? 900 : this.aiSpeed === '2x' ? 500 : 0;
+                    const speedMap = {'0': 900, '1': 500, '2': 0};
+                    const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
 
                     let boughtUnits = [];
 
@@ -2712,28 +2725,21 @@ class PrismataWeb {
         };
 
         // Output logic for AI Speed setting
-        this.aiSpeed = '1x'; // default
-        document.querySelectorAll('.speed-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.sounds.play('CLICK');
-                this.aiSpeed = e.target.getAttribute('data-speed');
-                
-                // Update active visual state
-                document.querySelectorAll('.speed-btn').forEach(b => {
-                    b.classList.remove('primary');
-                    b.classList.add('secondary');
-                });
-                
-                e.target.classList.remove('secondary');
-                e.target.classList.add('primary');
+        this.aiSpeed = '0'; // default (1x)
+        const speedSlider = document.getElementById('ai-speed-slider');
+        const speedDisplay = document.getElementById('ai-speed-display');
+        const speedLabels = ['1x', '2x', '5x'];
+        
+        if (speedSlider && speedDisplay) {
+            speedSlider.addEventListener('input', (e) => {
+                this.aiSpeed = e.target.value;
+                speedDisplay.textContent = speedLabels[this.aiSpeed] || '1x';
             });
             
-            // Set initial visual state
-            if (btn.getAttribute('data-speed') === this.aiSpeed) {
-                btn.classList.add('primary');
-                btn.classList.remove('secondary');
-            }
-        });
+            speedSlider.addEventListener('change', () => {
+                this.sounds.play('CLICK');
+            });
+        }
 
         const btnMainSettings = document.getElementById('btn-main-settings');
         if (btnMainSettings) {

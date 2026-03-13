@@ -324,10 +324,10 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     color: white;
     font-weight: 800;
     font-size: 1.2rem;
-    gap: 0.3rem;
     position: relative;
     user-select: none;
     transition: box-shadow 0.3s, border-color 0.3s;
+    gap: 0.3rem;
 }
 
 .central-attack.danger {
@@ -443,6 +443,12 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     opacity: 0.9;
 }
 
+.resource span[id^="p1-"], .resource span[id^="p2-"], .central-attack span[id="central-atk"] {
+    display: inline-block;
+    min-width: 25px; /* Enough for 2 digits */
+    text-align: center;
+}
+
 .resource.hp {
     color: var(--accent-red);
 }
@@ -480,7 +486,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     overflow-y: auto;
     /* Scroll vertically if many rows */
     overflow-x: hidden;
-    align-items: flex-start;
+    align-items: stretch;
 }
 
 #p1-units {
@@ -674,34 +680,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .unit-card.blocking {
-    border-color: var(--accent-purple);
-    box-shadow: 0 0 15px rgba(189, 0, 255, 0.4);
-}
-
-.combat-badge {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    width: 28px;
-    height: 28px;
-    background: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    z-index: 10;
-}
-
-.combat-badge.attacking {
-    background: var(--accent-red);
-    color: white;
-}
-
-.combat-badge.blocking {
-    background: var(--accent-purple);
-    color: white;
+    border-color: #1e62d0;
+    box-shadow: 0 0 15px rgba(30, 98, 208, 0.6);
 }
 
 /* removed empty ruleset */
@@ -998,6 +978,19 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     background: var(--glass-bg);
     color: white;
     border: 1px solid var(--glass-border);
+}
+
+.action-btn.shop-btn {
+    background: linear-gradient(135deg, #114220, #1b6631);
+    color: #ffe600;
+    border: 1px solid rgba(255, 230, 0, 0.4);
+    box-shadow: 0 0 10px rgba(255, 230, 0, 0.1);
+}
+
+.action-btn.shop-btn:hover {
+    background: linear-gradient(135deg, #185c2c, #248740);
+    border-color: #ffe600;
+    box-shadow: 0 0 20px rgba(255, 230, 0, 0.3);
 }
 
 .action-btn.accent {
@@ -1341,12 +1334,14 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     transition: all 0.2s;
     font-weight: 700;
     height: 50px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .shop-list-item:hover {
     background: var(--accent-primary);
     color: black;
-    margin-left: 10px;
+    transform: translateX(10px);
 }
 
 .shop-list-item.disabled .shop-item-info,

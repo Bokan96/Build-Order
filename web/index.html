@@ -172,11 +172,10 @@
                     <input type="range" id="volume-sfx" min="0" max="100" value="50" step="10">
                 </div>
                 <div class="setting-item" id="setting-ai-speed">
-                    <label>AI Speed (VS AI only)</label>
-                    <div class="speed-options" style="display: flex; gap: 0.5rem; justify-content: space-between; margin-top: 0.5rem;">
-                        <button class="menu-btn secondary speed-btn" data-speed="1x" style="padding: 0.5rem 1rem; width: 30%;">1x</button>
-                        <button class="menu-btn secondary speed-btn" data-speed="2x" style="padding: 0.5rem 1rem; width: 30%;">2x</button>
-                        <button class="menu-btn secondary speed-btn" data-speed="x5" style="padding: 0.5rem 1rem; width: 30%;">x5</button>
+                    <label>AI Speed</label>
+                    <div style="display: flex; gap: 1rem; align-items: center; justify-content: center; margin-top: 0.5rem; width: 100%;">
+                        <span id="ai-speed-display" style="font-weight: 800; color: var(--accent-primary); width: 35px; text-align: center;">1x</span>
+                        <input type="range" id="ai-speed-slider" min="0" max="2" value="0" step="1" style="flex: 1;">
                     </div>
                 </div>
                 <div class="settings-actions">
@@ -269,7 +268,7 @@
                     <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
                 </div>
                 <div class="main-buttons">
-                    <button id="btn-buy" class="action-btn secondary">SHOP</button>
+                    <button id="btn-buy" class="action-btn shop-btn">SHOP</button>
                     <button id="btn-end" class="action-btn accent">END TURN</button>
                 </div>
             </div>
