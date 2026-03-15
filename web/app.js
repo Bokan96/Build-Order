@@ -82,7 +82,7 @@ class PrismataWeb {
 
     async init() {
         this.initCustomCursor();
-        
+
         try {
             console.log("Initializing Pyodide... [VERSION 0.5.2 - SNAPPY UPDATE]");
             this.updateLoadingText("Downloading Python runtime...");
@@ -176,6 +176,7 @@ class PrismataWeb {
 
     showWelcomeScreen() {
         this.elements.welcomeScreen.classList.remove('hidden');
+        if (this.sounds) this.sounds.startMusic('bg_music - Aetherium_Chronicles.mp3');
         this._initParallaxBg();
         // event listeners are now in bindEvents
     }
@@ -194,52 +195,68 @@ class PrismataWeb {
         ];
         const W = window.innerWidth;
         const H = window.innerHeight;
-
-        // Scale card count based on screen area, minimum 8
+        // Scale card count into exactly 16 equal sections
         const area = W * H;
-        const count = Math.max(8, Math.min(24, Math.round(area / 35000)));
+        const baseCount = Math.max(16, Math.min(48, Math.round((area / 35000) * 1.6)));
+        const cardsPerCell = Math.max(1, Math.round(baseCount / 16));
+        const count = cardsPerCell * 16;
 
-        // Build pool of names (cycle through all 8 types evenly)
+        // Build pool of names and shuffle it
         const pool = [];
         for (let i = 0; i < count; i++) pool.push(cardNames[i % cardNames.length]);
+        pool.sort(() => Math.random() - 0.5);
 
-        // Poisson-style placement with minimum distance
+        const cellW = W / 4;
+        const cellH = H / 4;
         const placed = [];
-        const MIN_DIST = 160; // px between card centres
-        const MAX_ATTEMPTS = 40;
 
-        pool.forEach((name) => {
-            let x, y, attempts = 0, ok = false;
-            const w = 90 + Math.random() * 60;
-            do {
-                x = Math.random() * (W - w);
-                y = Math.random() * (H - 180);
-                const cx = x + w / 2, cy = y + 90;
-                ok = placed.every(p => Math.hypot(cx - p.cx, cy - p.cy) >= MIN_DIST);
-                attempts++;
-            } while (!ok && attempts < MAX_ATTEMPTS);
+        let poolIndex = 0;
+        for (let row = 0; row < 4; row++) {
+            for (let col = 0; col < 4; col++) {
+                for (let k = 0; k < cardsPerCell; k++) {
+                    const name = pool[poolIndex++];
+                    let x, y, attempts = 0, ok = false;
+                    const w = 90 + Math.random() * 60;
+                    let currentMinDist = 300; // Target 300px distance
+                    
+                    do {
+                        // Confine coordinates to the current cell segment (with safe edge bleeding)
+                        x = (col * cellW) - w/4 + Math.random() * cellW;
+                        y = (row * cellH) - 45 + Math.random() * cellH;
+                        
+                        const cx = x + w / 2, cy = y + 90;
+                        ok = placed.every(p => Math.hypot(cx - p.cx, cy - p.cy) >= currentMinDist);
+                        attempts++;
+                        
+                        // If cell gets too dense to honor 300px spacing, gradually relax the limit
+                        if (!ok && attempts % 20 === 0) {
+                            currentMinDist *= 0.85; 
+                        }
+                    } while (!ok && attempts < 150);
 
-            const img = document.createElement('img');
-            img.src = `assets/cards/${name}.webp`;
-            img.className = 'p-card';
-            const r0 = (Math.random() * 20 - 10).toFixed(1);
-            const r1 = (parseFloat(r0) + (Math.random() * 10 - 5)).toFixed(1);
-            const dx = ((Math.random() * 30) - 15).toFixed(1);
-            const dy = ((Math.random() * 30) - 15).toFixed(1);
-            const dur = 18 + Math.random() * 20;
-            const delay = -(Math.random() * dur);
+                    const img = document.createElement('img');
+                    img.src = `assets/cards/${name}.webp`;
+                    img.className = 'p-card';
+                    const r0 = (Math.random() * 20 - 10).toFixed(1);
+                    const r1 = (parseFloat(r0) + (Math.random() * 10 - 5)).toFixed(1);
+                    const dx = ((Math.random() * 30) - 15).toFixed(1);
+                    const dy = ((Math.random() * 30) - 15).toFixed(1);
+                    const dur = 18 + Math.random() * 20;
+                    const delay = -(Math.random() * dur);
 
-            img.style.cssText = `
-                width: ${w.toFixed(0)}px;
-                left: ${x.toFixed(0)}px;
-                top:  ${y.toFixed(0)}px;
-                --r0: ${r0}deg; --r1: ${r1}deg;
-                --dx: ${dx}px;  --dy: ${dy}px;
-                animation: card-drift ${dur.toFixed(1)}s ${delay.toFixed(1)}s ease-in-out infinite;
-            `;
-            bg.appendChild(img);
-            placed.push({ cx: x + (w / 2), cy: y + 90 });
-        });
+                    img.style.cssText = `
+                        width: ${w.toFixed(0)}px;
+                        left: ${x.toFixed(0)}px;
+                        top:  ${y.toFixed(0)}px;
+                        --r0: ${r0}deg; --r1: ${r1}deg;
+                        --dx: ${dx}px;  --dy: ${dy}px;
+                        animation: card-drift ${dur.toFixed(1)}s ${delay.toFixed(1)}s ease-in-out infinite;
+                    `;
+                    bg.appendChild(img);
+                    placed.push({ cx: x + (w / 2), cy: y + 90 });
+                }
+            }
+        }
     }
 
     showOnlineLobby() {
@@ -353,7 +370,7 @@ class PrismataWeb {
             this.sounds.play('CLICK');
             this.multiplayer.disconnect();
             this.elements.onlineLobbyScreen.classList.add('hidden');
-            this.elements.welcomeScreen.classList.remove('hidden');
+            this.showWelcomeScreen();
         };
     }
 
@@ -384,7 +401,7 @@ class PrismataWeb {
                 this.elements.disconnectModal.classList.add('hidden');
                 this.multiplayer.disconnect();
                 this.elements.app.classList.add('hidden');
-                this.elements.welcomeScreen.classList.remove('hidden');
+                this.showWelcomeScreen();
                 document.title = 'Build Order | Strategic Card Battle';
             };
         }
@@ -501,7 +518,7 @@ class PrismataWeb {
 
         document.getElementById('btn-back-to-menu').onclick = () => {
             this.elements.aiSelectionScreen.classList.add('hidden');
-            this.elements.welcomeScreen.classList.remove('hidden');
+            this.showWelcomeScreen();
         };
     }
 
@@ -776,11 +793,11 @@ class PrismataWeb {
             const bannerText = document.getElementById('turn-banner-text');
             if (banner && bannerText) {
                 bannerText.textContent = `${this.state.currentPlayer.toUpperCase()}'S TURN`;
-                
+
                 // Reset animation by cloning and replacing node
                 const newBanner = banner.cloneNode(true);
                 banner.parentNode.replaceChild(newBanner, banner);
-                
+
                 newBanner.classList.remove('hidden');
                 setTimeout(() => {
                     newBanner.classList.add('hidden');
@@ -1115,7 +1132,7 @@ class PrismataWeb {
 
                 column.appendChild(card);
             });
-            
+
             // Check if column is vulnerable in breach
             if (!isFriendly && this.state.phase === 'Breach') {
                 const combat = this.state.combat;
@@ -1124,7 +1141,7 @@ class PrismataWeb {
                 let hpNeededToKill = 0;
                 let topUnitInColumn = null;
                 let topUnitIndex = -1;
-                
+
                 // Find top-most alive unit
                 for (let i = unitsByType[type].length - 1; i >= 0; i--) {
                     const u = unitsByType[type][i];
@@ -1136,7 +1153,7 @@ class PrismataWeb {
                         break;
                     }
                 }
-                
+
                 if (canDamageColumn) {
                     column.classList.add('lethal-target-column');
                     column.style.cursor = 'pointer';
@@ -1153,11 +1170,11 @@ class PrismataWeb {
                     colMarker.style.color = '#fff';
                     colMarker.style.textShadow = '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 8px rgba(255, 60, 60, 1)';
                     colMarker.innerHTML = `${hpNeededToKill} ⚔️`;
-                    
+
                     // Hover effect listener onto the column itself
                     column.addEventListener('mouseenter', () => { column.style.transform = 'translateY(-5px)'; });
                     column.addEventListener('mouseleave', () => { column.style.transform = ''; });
-                    
+
                     column.appendChild(colMarker);
                     column.onclick = (e) => {
                         e.stopPropagation();
@@ -1210,7 +1227,7 @@ class PrismataWeb {
             this.elements.btnEnd.style.opacity = '1';
             this.elements.btnBuy.style.opacity = '1';
         }
-        
+
         // Disable and completely hide SHOP button during Block and Breach
         if (phase === 'Block' || phase === 'Breach') {
             this.elements.btnBuy.style.display = 'none';
@@ -1331,7 +1348,7 @@ class PrismataWeb {
             if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
                 const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
                 const abilitySuccess = await this.processActionResult(resultProxy, animateCard);
-                
+
                 if (abilitySuccess) {
                     this.sounds.play('CLICK');
                 }
@@ -1800,48 +1817,48 @@ class PrismataWeb {
 
                     // Wait for the "AI'S TURN" banner animation to finish (approx 2s)
                     await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    const speedMap = {'0': 900, '1': 500, '2': 0};
+
+                    const speedMap = { '0': 900, '1': 500, '2': 0 };
                     const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
-                    
+
                     if (stepDelayMs > 0) {
                         const stepsProxy = this.pyodide.runPython(`
                             global_def_steps_py = ai.plan_defense(game, engine)
                             global_def_steps_py
                         `);
                         const numSteps = stepsProxy.length;
-                        
+
                         // We gather the summary while replaying the visual steps
                         let blockSummary = [];
-                        
+
                         for (let i = 0; i < numSteps; i++) {
                             const step = stepsProxy.get(i);
                             if (step.get('type') === 'end') {
                                 step.destroy();
                                 break;
                             }
-                            
+
                             const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_def_steps_py[${i}])`);
                             this.log(`🤖 AI: ${label}`, 'opponent');
                             this.sounds.play('BLOCK');
                             blockSummary.push(label.replace('Blocks with', '').trim());
-                            
+
                             this.syncState();
                             this.updateUI();
-                            
+
                             step.destroy();
                             await new Promise(resolve => setTimeout(resolve, stepDelayMs));
                         }
                         stepsProxy.destroy();
-                        
+
                         if (blockSummary.length > 0) {
                             this.log(`AI blocked with: ${blockSummary.join(', ')}`, "opponent");
                         } else {
                             this.log("AI did not block.", "opponent");
                         }
-                        
+
                         this.pyodide.runPython(`engine.finish_blocking()`);
-                        
+
                     } else {
                         const defenseResultProxy = this.pyodide.runPython(`
                             # AI executes defense (blocking)
@@ -1893,7 +1910,7 @@ class PrismataWeb {
                 await new Promise(resolve => setTimeout(resolve, 2000));
 
                 try {
-                    const speedMap = {'0': 900, '1': 500, '2': 0};
+                    const speedMap = { '0': 900, '1': 500, '2': 0 };
                     const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
 
                     let boughtUnits = [];
@@ -1912,11 +1929,11 @@ class PrismataWeb {
                                 step.destroy();
                                 break;
                             }
-                            
+
                             const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
-                            
+
                             this.log(`🤖 AI: ${label}`, 'opponent');
-                            
+
                             // Visual/Audio cues for AI Actions
                             if (label.includes('Bought')) {
                                 this.sounds.play('BUY');
@@ -1955,7 +1972,7 @@ class PrismataWeb {
                                 engine.action_phase()
                             res_msg
                         `);
-                        
+
                         if (endMsg) {
                             this.log(`🚨 ${endMsg} damage incoming! Assign your blockers.`, 'important');
                         }
@@ -2714,13 +2731,13 @@ class PrismataWeb {
         this.elements.btnSettings.onclick = () => {
             this.sounds.play('CLICK');
             updateSettingsButtons(false);
-            
+
             // Show/hide AI speed setting based on game mode
             const aiSpeedItem = document.getElementById('setting-ai-speed');
             if (aiSpeedItem) {
                 aiSpeedItem.style.display = this.gameMode === 'AI' ? '' : 'none';
             }
-            
+
             this.elements.settingsModal.classList.remove('hidden');
         };
 
@@ -2729,13 +2746,13 @@ class PrismataWeb {
         const speedSlider = document.getElementById('ai-speed-slider');
         const speedDisplay = document.getElementById('ai-speed-display');
         const speedLabels = ['1x', '2x', '5x'];
-        
+
         if (speedSlider && speedDisplay) {
             speedSlider.addEventListener('input', (e) => {
                 this.aiSpeed = e.target.value;
                 speedDisplay.textContent = speedLabels[this.aiSpeed] || '1x';
             });
-            
+
             speedSlider.addEventListener('change', () => {
                 this.sounds.play('CLICK');
             });
@@ -2776,7 +2793,7 @@ class PrismataWeb {
                 this.sounds.play('CLICK');
                 this.elements.settingsModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
-                this.elements.welcomeScreen.classList.remove('hidden');
+                this.showWelcomeScreen();
                 document.title = 'Build Order | Strategic Card Battle';
                 if (this.gameMode === 'ONLINE') {
                     this.multiplayer.disconnect();
@@ -2798,7 +2815,7 @@ class PrismataWeb {
                 this.sounds.play('CLICK');
                 this.elements.endgameModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
-                this.elements.welcomeScreen.classList.remove('hidden');
+                this.showWelcomeScreen();
                 document.title = 'Build Order | Strategic Card Battle';
                 if (this.gameMode === 'ONLINE') {
                     this.multiplayer.disconnect();
@@ -2923,12 +2940,47 @@ class SoundManager {
     }
 
     startMusic(src = 'music_loop.mp3') {
-        if (this.bgMusic) this.bgMusic.pause();
+        if (!this.enabled) return;
 
-        this.bgMusic = new Audio(this.basePath + src);
-        this.bgMusic.loop = true;
-        this.bgMusic.volume = this.musicVolume;
-        this.bgMusic.play().catch(e => console.log("Music playback blocked until user interaction"));
+        if (this.bgMusic) {
+            // Prevent restarting if it points to the same track
+            if (this.bgMusic.src.includes(encodeURI(src))) {
+                if (this.bgMusic.paused) this.bgMusic.play().catch(e => console.log("Music blocked"));
+                return;
+            }
+
+            // Crossfade
+            const oldMusic = this.bgMusic;
+            const startVol = oldMusic.volume;
+            let steps = 20;
+            let step = 0;
+
+            const newMusic = new Audio(this.basePath + src);
+            newMusic.loop = true;
+            newMusic.volume = 0;
+            newMusic.play().catch(e => console.log("Music blocked"));
+
+            const fadeInterval = setInterval(() => {
+                step++;
+                const fraction = step / steps;
+
+                oldMusic.volume = Math.max(0, startVol * (1 - fraction));
+                newMusic.volume = this.musicVolume * fraction;
+
+                if (step >= steps) {
+                    clearInterval(fadeInterval);
+                    oldMusic.pause();
+                    newMusic.volume = this.musicVolume;
+                }
+            }, 1000 / steps); // 1.0 second crossfade
+
+            this.bgMusic = newMusic;
+        } else {
+            this.bgMusic = new Audio(this.basePath + src);
+            this.bgMusic.loop = true;
+            this.bgMusic.volume = this.musicVolume;
+            this.bgMusic.play().catch(e => console.log("Music blocked"));
+        }
     }
 }
 

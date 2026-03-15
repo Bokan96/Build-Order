@@ -1562,6 +1562,22 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     letter-spacing: 2px;
     position: relative;
     overflow: hidden;
+    border-radius: var(--radius-lg);
+}
+
+.menu-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transform: skewX(-20deg);
+}
+
+.menu-btn:hover::after {
+    animation: btn-shine 0.3s ease-out forwards;
 }
 
 .menu-btn.primary {
@@ -1579,7 +1595,6 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     background: var(--glass-bg);
     color: white;
     border-color: var(--glass-border);
-    margin-top: 1rem;
 }
 
 .menu-btn.secondary:hover {
