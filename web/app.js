@@ -81,14 +81,14 @@ class PrismataWeb {
         };
 
         this.unitDescriptions = {
-            'barrier': 'Fragile: gets destroyed upon blocking.',
-            'miner': 'Spend 1 Energy to gain 1 Gold.',
-            'energizer': 'Gain 1 Energy.',
-            'striker': 'Strong attacker, requires 1 Energy.',
-            'guard': 'Standard defender: 1 ATK / 2 BLK.',
-            'wall': 'Instant: enters play ready.',
-            'repeater': 'Spend 1 Energy to ready another unit.',
-            'volatile': 'Explosive! High attack.'
+            'barrier': '<b>Fragile</b><br>Destroyed after blocking.',
+            'miner': '<i>Iron pickaxe would be more effitient, ya know...</i>',
+            'energizer': '<i>Mitochondria is the powerhouse of the cell!</i>',
+            'striker': '<i>Sometimes offence is the best defence.</i>',
+            'guard': '<i>Cool, calm, collected.</i>',
+            'wall': '<b>Instant</b><br>Enters battlefield ready.',
+            'repeater': '<i>Great! Now do that again.</i>',
+            'volatile': '<i>KA-BOOM!</i>'
         };
 
         this.sounds = new SoundManager();
@@ -2298,7 +2298,7 @@ class PrismataWeb {
                     const nameEl = preview.querySelector('.shop-preview-name');
                     const descEl = preview.querySelector('.shop-preview-desc');
                     if (nameEl) nameEl.textContent = u.name;
-                    if (descEl) descEl.textContent = u.desc;
+                    if (descEl) descEl.innerHTML = u.desc;
                     preview.classList.remove('hidden');
                 }
             };
@@ -2431,7 +2431,7 @@ class PrismataWeb {
                         let costTxt = `${u.cost} 🪙`;
                         if (u.energyCost > 0) costTxt += ` ${u.energyCost} 🔋`;
                         previewCard.querySelector('.shop-preview-cost').textContent = costTxt;
-                        previewCard.querySelector('.shop-preview-desc').textContent = u.desc;
+                        previewCard.querySelector('.shop-preview-desc').innerHTML = u.desc;
                         previewCard.classList.remove('hidden');
 
                         // Grey tint for unaffordable
@@ -2679,7 +2679,7 @@ class PrismataWeb {
             <span class="stat blk">🛡️ ${unit.blk}</span>
         `;
 
-        descEl.textContent = this.unitDescriptions[unit.type] || 'A strategic unit.';
+        descEl.innerHTML = this.unitDescriptions[unit.type] || 'A strategic unit.';
     }
 
     // -- Debugging --

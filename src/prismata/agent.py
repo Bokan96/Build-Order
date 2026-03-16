@@ -869,7 +869,9 @@ class Agent:
                             needs_guard = False # Done
                     elif active_player.gold < 3:
                         # Fallback: if we can't afford guard, don't buy anything else that costs gold first
-                        pass
+                        # We MUST skip this turn's second purchase or wait
+                        bought_this_step = True # Fake it to stop loop
+                        continue
 
                 # STANDARD: Balanced economy — keep miners/energizers in parity, attack when ready
                 num_miners     = active_player.lifetime_units.get("miner", 0)
