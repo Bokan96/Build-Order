@@ -358,7 +358,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .central-attack #central-atk {
-    font-size: 1.2rem;
+    font-size: 1.7rem;
     line-height: 1;
 }
 
@@ -1396,7 +1396,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     top: 50%;
     transform: translateY(-50%);
     width: 200px;
-    height: 320px;
+    height: 380px;
     background: #1a1c26;
     border: 2px solid var(--accent-primary);
     border-radius: var(--radius-md);
@@ -1430,7 +1430,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 .shop-static-preview-container img {
     width: 100%;
-    height: 180px;
+    height: 210px;
     object-fit: contain;
 }
 
@@ -1440,10 +1440,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     color: var(--text-dim);
     text-align: center;
     line-height: 1.4;
-    height: 3rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    height: 4.5rem;
+    padding-top: 5px;
     overflow: hidden;
 }
 

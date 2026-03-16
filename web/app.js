@@ -921,9 +921,13 @@ class PrismataWeb {
             container.style.opacity = '1';
             if (displayVal > 0) {
                 container.style.borderColor = 'var(--accent-red)';
+                container.style.borderWidth = '3px';
+                container.style.background = '#ac2c2c';
                 container.classList.add('danger');
             } else {
                 container.style.borderColor = 'var(--glass-border)';
+                container.style.borderWidth = '2px';
+                container.style.background = '#0a093a';
                 container.classList.remove('danger');
             }
         }
@@ -2672,12 +2676,8 @@ class PrismataWeb {
         nameEl.textContent = unit.type.charAt(0).toUpperCase() + unit.type.slice(1);
         artEl.style.backgroundImage = `url('${this.unitImages[unit.type]}')`;
 
-        // Stats
-        statsEl.innerHTML = `
-            <span class="stat hp">❤️ ${unit.hp}</span>
-            <span class="stat atk">⚔️ ${unit.atk}</span>
-            <span class="stat blk">🛡️ ${unit.blk}</span>
-        `;
+        // Stats hidden as requested
+        statsEl.style.display = 'none';
 
         descEl.innerHTML = this.unitDescriptions[unit.type] || 'A strategic unit.';
     }
