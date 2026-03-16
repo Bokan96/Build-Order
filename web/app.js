@@ -13,6 +13,7 @@ class PrismataWeb {
         this.selectedAI = null;
         this.gameMode = 'AI'; // 'AI', 'HOTSEAT', or 'ONLINE'
         this.processingTurn = false;
+        this.hasInteracted = false;
 
         // Online multiplayer state
         this.multiplayer = new MultiplayerManager();
@@ -50,7 +51,9 @@ class PrismataWeb {
             endgameUnits: document.getElementById('endgame-units'),
             endgameGold: document.getElementById('endgame-gold'),
             endgameEnergy: document.getElementById('endgame-energy'),
-            btnEndgameMenu: document.getElementById('btn-endgame-main-menu')
+            btnEndgameMenu: document.getElementById('btn-endgame-main-menu'),
+            shopStaticPreview: document.getElementById('shop-static-preview'),
+            shopStaticPreviewImg: document.getElementById('shop-static-preview-img')
         };
 
         this.hoverTimeout = null;
@@ -77,11 +80,37 @@ class PrismataWeb {
             'barrier': 'assets/cards/Barrier.webp?v=2'
         };
 
+        this.unitDescriptions = {
+            'barrier': 'Fragile: gets destroyed upon blocking.',
+            'miner': 'Spend 1 Energy to gain 1 Gold.',
+            'energizer': 'Gain 1 Energy.',
+            'striker': 'Strong attacker, requires 1 Energy.',
+            'guard': 'Standard defender: 1 ATK / 2 BLK.',
+            'wall': 'Instant: enters play ready.',
+            'repeater': 'Spend 1 Energy to ready another unit.',
+            'volatile': 'Explosive! High attack.'
+        };
+
         this.sounds = new SoundManager();
     }
 
     async init() {
         this.initCustomCursor();
+
+        const handleFirstInteraction = () => {
+            if (!this.hasInteracted) {
+                this.hasInteracted = true;
+                if (this.elements.welcomeScreen && !this.elements.welcomeScreen.classList.contains('hidden')) {
+                    if (this.sounds) this.sounds.startMusic('bg_music - Aetherium_Chronicles.mp3');
+                }
+            }
+            window.removeEventListener('click', handleFirstInteraction);
+            window.removeEventListener('keydown', handleFirstInteraction);
+            window.removeEventListener('touchstart', handleFirstInteraction);
+        };
+        window.addEventListener('click', handleFirstInteraction);
+        window.addEventListener('keydown', handleFirstInteraction);
+        window.addEventListener('touchstart', handleFirstInteraction);
 
         try {
             console.log("Initializing Pyodide... [VERSION 0.5.2 - SNAPPY UPDATE]");
@@ -176,7 +205,9 @@ class PrismataWeb {
 
     showWelcomeScreen() {
         this.elements.welcomeScreen.classList.remove('hidden');
-        if (this.sounds) this.sounds.startMusic('bg_music - Aetherium_Chronicles.mp3');
+        if (this.sounds && this.hasInteracted) {
+            this.sounds.startMusic('bg_music - Aetherium_Chronicles.mp3');
+        }
         this._initParallaxBg();
         // event listeners are now in bindEvents
     }
@@ -2158,14 +2189,14 @@ class PrismataWeb {
     showShop() {
         // Define base costs as integers for sorting
         const shopUnits = [
-            { id: 'barrier', name: 'Barrier', cost: 1, energyCost: 0, desc: 'Cheap and fragile' },
-            { id: 'miner', name: 'Miner', cost: 2, energyCost: 0, desc: 'Produces Gold' },
-            { id: 'energizer', name: 'Energizer', cost: 2, energyCost: 0, desc: 'Produces Energy' },
-            { id: 'striker', name: 'Striker', cost: 3, energyCost: 0, desc: 'Strong attacker, cannot block' },
-            { id: 'guard', name: 'Guard', cost: 3, energyCost: 0, desc: 'Basic unit.' },
-            { id: 'wall', name: 'Wall', cost: 3, energyCost: 0, desc: 'Instant blocker.' },
-            { id: 'repeater', name: 'Repeater', cost: 3, energyCost: 0, desc: 'Unexhausts activated unit' },
-            { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 0, desc: 'Burst attack' }
+            { id: 'barrier', name: 'Barrier', cost: 1, energyCost: 0, desc: this.unitDescriptions['barrier'] },
+            { id: 'miner', name: 'Miner', cost: 2, energyCost: 0, desc: this.unitDescriptions['miner'] },
+            { id: 'energizer', name: 'Energizer', cost: 2, energyCost: 0, desc: this.unitDescriptions['energizer'] },
+            { id: 'striker', name: 'Striker', cost: 3, energyCost: 0, desc: this.unitDescriptions['striker'] },
+            { id: 'guard', name: 'Guard', cost: 3, energyCost: 0, desc: this.unitDescriptions['guard'] },
+            { id: 'wall', name: 'Wall', cost: 3, energyCost: 0, desc: this.unitDescriptions['wall'] },
+            { id: 'repeater', name: 'Repeater', cost: 3, energyCost: 0, desc: this.unitDescriptions['repeater'] },
+            { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 0, desc: this.unitDescriptions['volatile'] }
         ];
 
         // Sort by cost ascending
@@ -2257,10 +2288,25 @@ class PrismataWeb {
                    </div>
                 </div>
                 ${progressHtml}
-                <div class="shop-preview">
-                    <img src="${imgUrl}" alt="${u.name}">
-                </div>
             `;
+
+            // Desktop hover preview
+            item.onmouseenter = () => {
+                if (window.innerWidth > 768) {
+                    this.elements.shopStaticPreviewImg.src = imgUrl;
+                    const preview = this.elements.shopStaticPreview;
+                    const nameEl = preview.querySelector('.shop-preview-name');
+                    const descEl = preview.querySelector('.shop-preview-desc');
+                    if (nameEl) nameEl.textContent = u.name;
+                    if (descEl) descEl.textContent = u.desc;
+                    preview.classList.remove('hidden');
+                }
+            };
+            item.onmouseleave = () => {
+                if (window.innerWidth > 768) {
+                    this.elements.shopStaticPreview.classList.add('hidden');
+                }
+            };
 
             this.elements.shopGrid.appendChild(item);
         });
@@ -2460,54 +2506,134 @@ class PrismataWeb {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         try {
-            const resultProxy = this.pyodide.runPython(`
-            # AI executes actions
-            summary = ai.execute_turn(game, engine)
+            const speedMap = { '0': 900, '1': 500, '2': 0 };
+            const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
             
-            # End AI Action phase
-            engine.end_phase()
-            engine.end_turn()
-            
-            # Start player's turn
-            engine.start_phase()
-            engine.block_phase()
+            let boughtUnits = [];
 
-            res_msg = ""
-            if game.phase == "Block":
-                total_atk = sum(u.attack for u in engine.attacking_units)
-                res_msg = f"INCOMING: {total_atk}"
-            else:
-                engine.action_phase()
-            
-            # Return summary to JS
-            { "summary": summary, "msg": res_msg }
-        `);
+            if (stepDelayMs > 0) {
+                // ===  STEP-BY-STEP AI REPLAY  ===
+                const stepsProxy = this.pyodide.runPython(`
+                    global_steps_py = ai.plan_turn(game, engine)
+                    global_steps_py
+                `);
+                const numSteps = stepsProxy.length;
 
-            const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
-            resultProxy.destroy();
+                for (let i = 0; i < numSteps; i++) {
+                    const step = stepsProxy.get(i);
+                    if (step.get('type') === 'end') {
+                        step.destroy();
+                        break;
+                    }
 
-            if (result.summary && result.summary.length > 0) {
-                this.log(`AI Actions: ${result.summary.join(", ")} `, 'opponent');
-            }
+                    const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
 
-            if (result.msg) {
-                this.log(`🚨 ${result.msg} damage incoming! Assign your blockers.`, "important");
+                    this.log(`🤖 AI: ${label}`, 'opponent');
+
+                    // Visual/Audio cues for AI Actions
+                    if (label.includes('Bought')) {
+                        this.sounds.play('BUY');
+                    } else if (label.includes('Energizer') || label.includes('Miner') || label.includes('Wall') || label.includes('Repeater')) {
+                        this.sounds.play('CLICK');
+                    }
+
+                    this.syncState();
+                    this.updateUI();
+
+                    // Trigger shine if a unit was bought
+                    if (label.includes('Bought')) {
+                        const boughtMatch = label.match(/Bought\s+(\w+)/i);
+                        if (boughtMatch && boughtMatch[1]) {
+                            this._triggerBuyAnimation(boughtMatch[1].toLowerCase());
+                        }
+                    }
+
+                    step.destroy();
+                    await new Promise(resolve => setTimeout(resolve, stepDelayMs));
+                }
+                stepsProxy.destroy();
+
+                // 3. End turn and transition
+                const endMsg = this.pyodide.runPython(`
+                    engine.end_phase()
+                    engine.end_turn()
+                    game.current_player.units_purchased = 0
+                    engine.start_phase()
+                    engine.block_phase()
+                    res_msg = ""
+                    if game.phase == "Block":
+                        total_atk = sum(u.attack for u in engine.attacking_units)
+                        res_msg = f"INCOMING: {total_atk}"
+                    else:
+                        engine.action_phase()
+                    res_msg
+                `);
+
+                if (endMsg) {
+                    this.log(`🚨 ${endMsg} damage incoming! Assign your blockers.`, 'important');
+                }
+            } else {
+                // ===  INSTANT: single-batch (original behavior)  ===
+                const resultProxy = this.pyodide.runPython(`
+                    summary = ai.execute_turn(game, engine)
+                    game.current_player.units_purchased = 0
+                    engine.end_phase()
+                    engine.end_turn()
+                    engine.start_phase()
+                    engine.block_phase()
+                    res_msg = ""
+                    if game.phase == "Block":
+                        total_atk = sum(u.attack for u in engine.attacking_units)
+                        res_msg = f"INCOMING: {total_atk}"
+                    else:
+                        engine.action_phase()
+                    {"summary": summary, "msg": res_msg}
+                `);
+                const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
+                resultProxy.destroy();
+
+                if (result.summary && result.summary.length > 0) {
+                    this.log(`AI Actions: ${result.summary.join(", ")}`, 'opponent');
+                    result.summary.forEach(action => {
+                        if (action.includes('Bought')) {
+                            const boughtMatch = action.match(/Bought\s+(\w+)/i);
+                            if (boughtMatch && boughtMatch[1]) {
+                                boughtUnits.push(boughtMatch[1].toLowerCase());
+                            }
+                        }
+                    });
+                }
+                if (result.msg) {
+                    this.log(`🚨 ${result.msg} damage incoming! Assign your blockers.`, 'important');
+                }
             }
 
             this.syncState();
             this.updateUI();
 
-            this.processingTurn = false;
+            if (boughtUnits.length > 0) {
+                boughtUnits.forEach(u => this._triggerBuyAnimation(u));
+            }
 
-            if (this.state.phase !== 'Defense') {
+            if (this.state.phase !== 'Block') {
                 this.log("Your turn!", "player1");
             }
+
         } catch (aiError) {
-            console.error("AI Action Phase error:", aiError);
+            console.error("AI turn error:", aiError);
             this.log("AI turn failed: " + aiError.message, "important");
-            this.processingTurn = false;
-            this.elements.btnEnd.disabled = false;
+            this.pyodide.runPython(`
+                game.current_player.units_purchased = 0
+                if game.phase != "Action":
+                    engine.action_phase()
+            `);
+            this.syncState();
+            this.updateUI();
         }
+
+        this.processingTurn = false;
+        this.elements.btnEnd.disabled = false;
+        this.elements.btnBuy.disabled = false;
     }
 
     // -- Unit Preview --
@@ -2553,19 +2679,7 @@ class PrismataWeb {
             <span class="stat blk">🛡️ ${unit.blk}</span>
         `;
 
-        // Descriptions (Static for now, could be pulled from Python)
-        const descriptions = {
-            'barrier': 'Cheap and fragile',
-            'miner': 'Produces Gold',
-            'energizer': 'Produces Energy',
-            'striker': 'Strong attacker, cannot block',
-            'guard': 'Basic unit.',
-            'wall': 'Instant blocker.',
-            'repeater': 'Unexhausts activated unit',
-            'volatile': 'Burst attack'
-        };
-
-        descEl.textContent = descriptions[unit.type] || 'A strategic unit.';
+        descEl.textContent = this.unitDescriptions[unit.type] || 'A strategic unit.';
     }
 
     // -- Debugging --
@@ -2901,7 +3015,7 @@ class SoundManager {
         this.enabled = true;
         this.basePath = 'assets/sounds/';
         this.sfxVolume = 0.5;
-        this.musicVolume = 0.0;
+        this.musicVolume = 0.5;
         this.sounds = {
             'CLICK': 'click.mp3',
             'BUY': 'buy.mp3',

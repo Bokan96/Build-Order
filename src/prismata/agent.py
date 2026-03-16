@@ -144,7 +144,7 @@ class Agent:
             # Per-strategy purchasing (simplified planning version)
             if not bought:
                 unit = self._pick_buy(strat, active_player, enemy, sim_gold, sim_energy, penalty,
-                                      enemy_block_sim, enemy_potential_attack, my_total_block)
+                                      enemy_block_sim, enemy_potential_attack, my_total_block, game.turn_number)
                 if unit:
                     steps.append({'type': 'buy', 'unit': unit, 'label': f'Bought {unit.capitalize()}'})
                     sim_gold, sim_energy, purchases, bought = self._sim_deduct(unit, sim_gold, sim_energy, penalty, purchases)
@@ -200,7 +200,7 @@ class Agent:
         g, e = self._unit_cost(unit_name)
         return gold - g, energy - (e + penalty), purchases + 1, True
 
-    def _pick_buy(self, strat, active_player, enemy, gold, energy, penalty, enemy_block, enemy_atk, my_block):
+    def _pick_buy(self, strat, active_player, enemy, gold, energy, penalty, enemy_block, enemy_atk, my_block, turn_number=None):
         """Return the unit name the AI wants to buy, or None."""
         lifetime = active_player.lifetime_units
         num_strikers   = lifetime.get("striker", 0)
@@ -234,6 +234,12 @@ class Agent:
                 if can(t): return t
             if can("striker"): return "striker"
         elif strat == "Standard":
+            # Guard response: buy a guard if enemy has a striker and we haven't bought any guard yet
+            ai_has_no_guards = active_player.lifetime_units.get("guard", 0) == 0
+            enemy_has_striker = enemy.lifetime_units.get("striker", 0) > 0
+            if ai_has_no_guards and enemy_has_striker:
+                if can("guard"): return "guard"
+                
             live_miners     = len(active_player.get_units_by_type("miner"))
             live_energizers = len(active_player.get_units_by_type("energizer"))
             has_eco_consumers = (
@@ -516,6 +522,18 @@ class Agent:
         
         reserved_energy = min(active_player.energy, striker_energy_needed)
         
+        # Standard priority: Guard against Striker
+        needs_guard = False
+        if strat == "Standard":
+            ai_has_no_guards = active_player.lifetime_units.get("guard", 0) == 0
+            enemy_has_striker = game.other_player.lifetime_units.get("striker", 0) > 0
+            if ai_has_no_guards and enemy_has_striker:
+                needs_guard = True
+        
+        # If we need a guard, don't reserve energy that could be used for mining gold
+        if needs_guard:
+            reserved_energy = 0
+
         # If we have a potential breach with other units, add that too
         if potential_total_damage > enemy_block and potential_total_damage > striker_energy_needed:
              reserved_energy = max(reserved_energy, total_attack_energy_cost)
@@ -839,6 +857,20 @@ class Agent:
                             bought_this_step = True
 
             elif strat == "Standard":
+                # Guard response: buy a guard if enemy has a striker and we have no guards yet
+                # needs_guard was calculated at the start of handle_action
+                if needs_guard:
+                    if active_player.gold >= 3 and active_player.energy >= (penalty + reserved_energy):
+                        success, _ = engine.buy_unit("guard")
+                        if success:
+                            self.log("Standard: Buying Guard to counter enemy Striker")
+                            self.record_action("Bought Guard")
+                            bought_this_step = True
+                            needs_guard = False # Done
+                    elif active_player.gold < 3:
+                        # Fallback: if we can't afford guard, don't buy anything else that costs gold first
+                        pass
+
                 # STANDARD: Balanced economy — keep miners/energizers in parity, attack when ready
                 num_miners     = active_player.lifetime_units.get("miner", 0)
                 num_energizers = active_player.lifetime_units.get("energizer", 0)

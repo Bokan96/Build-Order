@@ -190,7 +190,7 @@ class Barrier(Unit):
     """
     
     def __init__(self):
-        super().__init__("Barrier", gold_cost=1, energy_cost=0, attack=0, block=1, health=1)
+        super().__init__("Barrier", gold_cost=1, energy_cost=0, attack=0, block=2, health=1)
         self.fragile = True
 
 
