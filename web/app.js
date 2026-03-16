@@ -70,14 +70,14 @@ class PrismataWeb {
         };
 
         this.unitImages = {
-            'miner': 'assets/cards/Miner.webp?v=2',
-            'energizer': 'assets/cards/Energizer.webp?v=2',
-            'striker': 'assets/cards/Striker.webp?v=2',
-            'guard': 'assets/cards/Guard.webp?v=2',
-            'wall': 'assets/cards/Wall.webp?v=2',
-            'repeater': 'assets/cards/Repeater.webp?v=2',
-            'volatile': 'assets/cards/Volitile.webp?v=2',
-            'barrier': 'assets/cards/Barrier.webp?v=2'
+            'miner': 'assets/cards/Miner.webp?v=3',
+            'energizer': 'assets/cards/Energizer.webp?v=3',
+            'striker': 'assets/cards/Striker.webp?v=3',
+            'guard': 'assets/cards/Guard.webp?v=3',
+            'wall': 'assets/cards/Wall.webp?v=3',
+            'repeater': 'assets/cards/Repeater.webp?v=3',
+            'volatile': 'assets/cards/Volitile.webp?v=3',
+            'barrier': 'assets/cards/Barrier.webp?v=3'
         };
 
         this.unitDescriptions = {
@@ -1060,9 +1060,18 @@ class PrismataWeb {
                     overlayHtml = `<div class="block-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,100,255,0.15);display:flex;align-items:center;justify-content:center;z-index:20;pointer-events:none;user-select:none;"><span style="display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="${blkStyle}">${unit.blk}</span><span style="font-size:2.2rem;line-height:1;">🛡️</span></span></div>`;
                 }
 
+                // Status overlays
+                let statusHtml = '';
+                if (isAttacking) {
+                    statusHtml = `<div class="attacking-swords">⚔️</div>`;
+                } else if (isExhausted && !isBlocking) {
+                    statusHtml = `<div class="exhausted-zzz">💤</div>`;
+                }
+
                 card.innerHTML = `
                         <div class="unit-art" style="background-image: url('${imgUrl}')"></div>
                         ${overlayHtml}
+                        ${statusHtml}
                     `;
 
                 // Hover Preview - available for all cards
@@ -1362,6 +1371,18 @@ class PrismataWeb {
                     if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
                         this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
                     }
+
+                    // Special destruction animation for Volatile
+                    if (unit.type === 'volatile' && animateCard) {
+                        animateCard.classList.add('unit-destroy');
+                        this.sounds.play('DESTROY');
+                        // Delay sync slightly to let animation start
+                        setTimeout(() => {
+                            this.syncState();
+                            this.updateUI();
+                        }, 600);
+                        return;
+                    }
                 } else {
                     this.log(`Error: ${result.msg}`, 'important');
                     this.sounds.play('ERROR');
@@ -1417,11 +1438,26 @@ class PrismataWeb {
             } else if (unit.type === 'volatile') {
                 // Detonate volatile
                 const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+                
+                if (animateCard) {
+                    animateCard.classList.add('unit-destroy');
+                    this.sounds.play('DESTROY');
+                }
+
                 const volSuccess = await this.processActionResult(resultProxy, animateCard);
 
                 // Send to remote player
                 if (volSuccess && this.gameMode === 'ONLINE' && !this.isRemoteAction) {
                     this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
+                }
+
+                // If success, we already triggered destroy animation. Delay sync if needed.
+                if (volSuccess) {
+                    setTimeout(() => {
+                        this.syncState();
+                        this.updateUI();
+                    }, 600);
+                    return;
                 }
             }
         } catch (e) {
@@ -1600,6 +1636,29 @@ class PrismataWeb {
         if (unit.type === 'barrier') {
             this.log('Barrier shattered blocking the attack!', 'important');
             this.handleUnitMouseLeave(); // Fix tooltip freeze as unit is destroyed
+            this.sounds.play('DESTROY');
+
+            // Find the barrier column and play destroy animation
+            const area = this.state.currentPlayer === this.state.p1.name ? this.elements.p1Units : this.elements.p2Units;
+            const columns = area.querySelectorAll('.unit-column');
+            for (const col of columns) {
+                const card = col.querySelector('[data-type="barrier"]');
+                if (card) {
+                    // Find the interactive (non-exhausted) barrier
+                    const interactiveCard = col.querySelector('.unit-card.interactive') || col.querySelector('.unit-card:not(.exhausted)');
+                    if (interactiveCard) {
+                        interactiveCard.classList.add('unit-destroy');
+                    }
+                    break;
+                }
+            }
+
+            // Delay sync so animation plays
+            setTimeout(() => {
+                this.syncState();
+                this.updateUI();
+            }, 600);
+            return;
         }
 
         this.syncState();
@@ -1650,23 +1709,34 @@ class PrismataWeb {
             this.log(`Destroyed ${unit.name} #${unitNumber}`, 'important');
             this.sounds.play('DESTROY');
 
+            // Play destruction animation on the card
+            if (column) {
+                const targetCard = column.querySelectorAll('.unit-card')[unitNumber - 1];
+                if (targetCard) {
+                    targetCard.classList.add('unit-destroy');
+                }
+            }
+
             // Send to remote player
             if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
                 this.multiplayer.sendAction({ type: 'breach', unitType: unit.type, unitNumber, hp: unit.hp, unitName: unit.name, isP1Target });
             }
 
-            // Re-sync to check if breach is finished
-            this.syncState();
+            // Wait for destroy animation before syncing UI
+            setTimeout(() => {
+                // Re-sync to check if breach is finished
+                this.syncState();
 
-            // Check if all damage assigned
-            const combat = this.state.combat;
-            const remaining = (combat.atk - combat.blk) - combat.assigned;
+                // Check if all damage assigned
+                const combat = this.state.combat;
+                const remaining = (combat.atk - combat.blk) - combat.assigned;
 
-            if (remaining <= 0) {
-                this.handleEndTurn();
-            } else {
-                this.updateUI();
-            }
+                if (remaining <= 0) {
+                    this.handleEndTurn();
+                } else {
+                    this.updateUI();
+                }
+            }, 600);
         } else {
             // Error handling
             this.log(`Error: ${result.msg}`, 'important');
@@ -1853,7 +1923,7 @@ class PrismataWeb {
                     // Wait for the "AI'S TURN" banner animation to finish (approx 2s)
                     await new Promise(resolve => setTimeout(resolve, 2000));
 
-                    const speedMap = { '0': 900, '1': 500, '2': 0 };
+                    const speedMap = { '0': 1500, '1': 900, '2': 0 };
                     const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
 
                     if (stepDelayMs > 0) {
@@ -1873,10 +1943,28 @@ class PrismataWeb {
                                 break;
                             }
 
+                            const stepData = step.toJs({ dict_converter: Object.fromEntries });
+                            const isBarrierBlock = stepData.type === 'block' && stepData.unit === 'barrier';
+
+                            if (isBarrierBlock) {
+                                // Find the barrier card to animate before it's removed by syncState
+                                const area = this.elements.p2Units; // AI is always P2 in PVE
+                                const barrierCard = area.querySelector('[data-type="barrier"]:not(.exhausted)');
+                                if (barrierCard) {
+                                    barrierCard.classList.add('unit-destroy');
+                                    this.sounds.play('DESTROY');
+                                }
+                            }
+
                             const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_def_steps_py[${i}])`);
                             this.log(`🤖 AI: ${label}`, 'opponent');
                             this.sounds.play('BLOCK');
                             blockSummary.push(label.replace('Blocks with', '').trim());
+
+                            if (isBarrierBlock) {
+                                // Wait for animation before syncing/updating which removes the card
+                                await new Promise(resolve => setTimeout(resolve, 600));
+                            }
 
                             this.syncState();
                             this.updateUI();
@@ -1945,7 +2033,7 @@ class PrismataWeb {
                 await new Promise(resolve => setTimeout(resolve, 2000));
 
                 try {
-                    const speedMap = { '0': 900, '1': 500, '2': 0 };
+                    const speedMap = { '0': 1500, '1': 900, '2': 0 };
                     const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
 
                     let boughtUnits = [];
@@ -2132,7 +2220,7 @@ class PrismataWeb {
                     target.classList.remove('unit-shine');
                     void target.offsetWidth; // Force CSS reflow to restart animation
                     target.classList.add('unit-shine');
-                    setTimeout(() => target.classList.remove('unit-shine'), 900);
+                    setTimeout(() => target.classList.remove('unit-shine'), 1100);
                 }, 300);
             }
             break;
@@ -2510,7 +2598,7 @@ class PrismataWeb {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         try {
-            const speedMap = { '0': 900, '1': 500, '2': 0 };
+            const speedMap = { '0': 1500, '1': 900, '2': 0 };
             const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
             
             let boughtUnits = [];
@@ -2771,6 +2859,7 @@ class PrismataWeb {
         document.body.addEventListener('click', (e) => {
             const target = e.target.closest('button');
             if (!target) return;
+            this.sounds.play('CLICK');
 
             if (target.id === 'btn-pve') {
                 console.log("PvE Mode Selected via Delegation");
@@ -3069,7 +3158,7 @@ class SoundManager {
             let steps = 20;
             let step = 0;
 
-            const newMusic = new Audio(this.basePath + src);
+            const newMusic = new Audio(this.basePath + src + '?v=2');
             newMusic.loop = true;
             newMusic.volume = 0;
             newMusic.play().catch(e => console.log("Music blocked"));
@@ -3090,7 +3179,7 @@ class SoundManager {
 
             this.bgMusic = newMusic;
         } else {
-            this.bgMusic = new Audio(this.basePath + src);
+            this.bgMusic = new Audio(this.basePath + src + '?v=2');
             this.bgMusic.loop = true;
             this.bgMusic.volume = this.musicVolume;
             this.bgMusic.play().catch(e => console.log("Music blocked"));

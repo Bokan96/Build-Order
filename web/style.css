@@ -529,9 +529,10 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     flex-direction: column;
     padding: 0;
     /* cursor removed */
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s, border-color 0.3s;
+    transition: box-shadow 0.2s, border-color 0.2s;
     overflow: hidden;
     z-index: 1;
+    --unit-filter: brightness(1) grayscale(0);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
     pointer-events: none;
     /* Let the column handle clicks mostly, but we re-enable for preview */
@@ -572,7 +573,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     transform: rotate(90deg) !important;
     transform-origin: center center !important;
     opacity: 1;
-    filter: grayscale(1) brightness(0.7);
+    --unit-filter: grayscale(1) brightness(0.7);
+    filter: var(--unit-filter);
     /* CRITICAL: Kill any transition from hover triggers */
     transition: none !important;
     /* Remove hover lift and old margins */
@@ -1395,8 +1397,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     left: calc(100% + 20px);
     top: 50%;
     transform: translateY(-50%);
-    width: 200px;
-    height: 380px;
+    width: 260px;
+    height: 420px;
     background: #1a1c26;
     border: 2px solid var(--accent-primary);
     border-radius: var(--radius-md);
@@ -1430,7 +1432,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 .shop-static-preview-container img {
     width: 100%;
-    height: 210px;
+    height: 250px;
     object-fit: contain;
 }
 
@@ -1440,7 +1442,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     color: var(--text-dim);
     text-align: center;
     line-height: 1.4;
-    height: 4.5rem;
+    height: 5.5rem;
     padding-top: 5px;
     overflow: hidden;
 }
