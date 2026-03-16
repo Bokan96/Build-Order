@@ -589,6 +589,8 @@ class PrismataWeb {
                     this.log("Local Multiplayer Mode Started.", "system");
                 }
 
+                this.sounds.play('TURN_START');
+
                 this.setupMobileLayout();
                 this.updateUI();
             }, 500);
@@ -1869,6 +1871,7 @@ class PrismataWeb {
                 if (this.gameMode === 'AI') {
                     setTimeout(() => this.runAIActionPhase(), 100);
                 } else {
+                    this.sounds.play('TURN_START');
                     this.log(`${this.state.currentPlayer}'s turn!`, "system");
                     this.updateUI();
                 }
@@ -1903,6 +1906,7 @@ class PrismataWeb {
                                engine.action_phase()
                         `);
                         this.syncState();
+                        this.sounds.play('TURN_START');
                         this.log(`${this.state.currentPlayer}'s turn!`, "system");
                     }
                     this.updateUI();
@@ -2594,6 +2598,7 @@ class PrismataWeb {
         this.elements.btnEnd.disabled = true;
         this.elements.btnBuy.disabled = true;
 
+        this.sounds.play('TURN_START');
         this.log("AI Opponent is thinking...", "system");
         await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -3119,7 +3124,8 @@ class SoundManager {
             'DEFEAT': 'defeat.mp3',
             'SHOP_OPEN': 'shop_open.wav',
             'HOVER': 'hover_short.mp3',
-            'UNIT_HOVER': 'hover.wav'
+            'UNIT_HOVER': 'hover.wav',
+            'TURN_START': 'turn-start.mp3'
         };
 
         this.bgMusic = null;
