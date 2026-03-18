@@ -77,6 +77,7 @@ class Player:
     def ready_all_units(self):
         """Ready all units at start of turn (Except Walls, which require repair)."""
         for unit in self.units:
+            unit.reset_turn_state() # Reset undo tracking
             if unit.name != "Wall":
                 unit.ready()
             

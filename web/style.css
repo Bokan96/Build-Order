@@ -579,8 +579,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     /* Remove hover lift and old margins */
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
-    margin-top: calc(-78px * var(--ui-scale));
-    /* Kept to account for rotation taking vertical space */
+    margin-top: calc(-104px * var(--ui-scale));
+    /* Match standard card overlap */
 }
 
 /* Subtle feedback on exhausted hover */
@@ -597,6 +597,12 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 .unit-card.interactive {
     box-shadow: 0 0 5px var(--accent-green);
     border-color: var(--accent-green);
+}
+
+.unit-card.exhausted.interactive {
+    box-shadow: 0 0 15px var(--accent-green) !important;
+    border-color: var(--accent-green) !important;
+    cursor: pointer;
 }
 
 .unit-card.lethal-target {

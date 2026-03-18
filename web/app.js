@@ -790,6 +790,7 @@ class PrismataWeb {
                             "blk": u.block,
                             "type": u.name.lower(),
                             "isAlive": u.is_alive(),
+                            "usedThisTurn": u.used_this_turn,
                             "attacking": u in engine.attacking_units or u in game.pending_attackers or u in engine.prepared_squad,
                             "blocking": u in engine.blocking_units
                         } for u in sorted_units]
@@ -1045,7 +1046,8 @@ class PrismataWeb {
                         break;
                     }
                 } else {
-                    if (!u.exhausted || (isFriendly && u.type === 'wall')) {
+                    const isUndoable = isFriendly && this.state.phase === 'Action' && u.usedThisTurn;
+                    if (!u.exhausted || isUndoable || (isFriendly && u.type === 'wall')) {
                         interactiveIndex = i;
                         break;
                     }
@@ -1056,7 +1058,8 @@ class PrismataWeb {
             let rotationIndex = -1;
             for (let i = 0; i < unitsByType[type].length; i++) {
                 const u = unitsByType[type][i];
-                if (!u.exhausted || (isFriendly && u.type === 'wall')) {
+                const isUndoable = isFriendly && this.state.phase === 'Action' && u.usedThisTurn;
+                if (!u.exhausted || isUndoable || (isFriendly && u.type === 'wall')) {
                     rotationIndex = i;
                     break;
                 }
@@ -1166,7 +1169,7 @@ class PrismataWeb {
                 });
 
                 // Interaction Logic
-                const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall');
+                const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall' || unit.usedThisTurn);
                 const canBlockInBlock = isFriendly && !isExhausted && this.state.phase === 'Block' && unit.blk > 0 && !isBlocking;
                 const canDamageInBreach = !isFriendly && this.state.phase === 'Breach' && unit.hp > 0;
 
@@ -1351,6 +1354,28 @@ class PrismataWeb {
                 return;
             }
 
+            // UNDO LOGIC: If unit is exhausted but was used this turn, undo it
+            if (unit.exhausted && unit.usedThisTurn) {
+                console.log("Undoing action for", unit.type, unitNumber);
+                const resultProxy = this.pyodide.runPython(`
+                    success, msg = engine.undo_action("${unit.type}", ${unitNumber})
+                    {"success": success, "msg": msg}
+                `);
+                const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
+                resultProxy.destroy();
+
+                if (result.success) {
+                    this.sounds.play('CLICK');
+                    this.log(`Undid ${unit.name} action.`, 'system');
+                    this.syncState();
+                    this.updateUI();
+                } else {
+                    this.log(`Could not undo: ${result.msg}`, 'important');
+                    this.sounds.play('ERROR');
+                }
+                return;
+            }
+
             // Find the card to animate (the rotation-target)
             let animateCard = null;
             if (columnElement) {
@@ -1375,6 +1400,8 @@ class PrismataWeb {
                                 engine.prepared_squad.append(target_unit)
                                 game.current_player.energy -= target_unit.attack_cost
                                 target_unit.exhausted = True
+                                target_unit.used_this_turn = True
+                                target_unit.action_log = {"type": "prepare_attack", "energy": target_unit.attack_cost}
                                 if target_unit.name == "Volatile":
                                     target_unit.take_damage(99)
                                     game.current_player.remove_dead_units()
@@ -1438,7 +1465,10 @@ class PrismataWeb {
 
             // Resource generation units (miner, energizer, wall)
             if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
-                const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+                const resultProxy = this.pyodide.runPython(`
+                    success, msg = engine.use_ability("${unit.type}", ${unitNumber})
+                    {"success": success, "msg": msg}
+                `);
                 const abilitySuccess = await this.processActionResult(resultProxy, animateCard);
 
                 if (abilitySuccess) {
@@ -1473,7 +1503,10 @@ class PrismataWeb {
                 }
             } else if (unit.type === 'volatile') {
                 // Detonate volatile
-                const resultProxy = this.pyodide.runPython(`engine.use_ability("${unit.type}", ${unitNumber})`);
+                const resultProxy = this.pyodide.runPython(`
+                    success, msg = engine.use_ability("${unit.type}", ${unitNumber})
+                    {"success": success, "msg": msg}
+                `);
                 
                 if (animateCard) {
                     animateCard.classList.add('unit-destroy');
@@ -2268,21 +2301,26 @@ class PrismataWeb {
     async processActionResult(proxy, cardElement) {
         const result = proxy.toJs({ dict_converter: Object.fromEntries });
         proxy.destroy();
-        if (result[0]) {
+
+        // Handle both dict {"success": ..., "msg": ...} and array [success, msg]
+        const success = result.success !== undefined ? result.success : result[0];
+        const msg = result.msg !== undefined ? result.msg : result[1];
+
+        if (success) {
             if (cardElement) {
                 cardElement.classList.add('exhausting-animation');
             }
             this.sounds.play('ABILITY');
-            this.log(result[1], 'player1');
+            if (msg) this.log(msg, 'player1');
 
             this.syncState();
             this.updateUI();
             return true;
         } else {
-            this.log(result[1], 'important');
+            if (msg) this.log(msg, 'important');
             this.sounds.play('ERROR');
 
-            if (result[1].includes("energy")) {
+            if (msg && typeof msg === 'string' && msg.includes("energy")) {
                 const isP1Turn = this.state.currentPlayer === this.state.p1.name;
                 const energyEl = document.getElementById(isP1Turn ? 'p1-energy' : 'p2-energy');
                 if (energyEl && energyEl.parentElement) {

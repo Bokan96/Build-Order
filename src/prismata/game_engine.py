@@ -117,19 +117,88 @@ class GameEngine:
         
         # Handle different abilities
         if unit.name == "Miner":
-            return unit.mine(player)
+            success, msg = unit.mine(player)
+            if success:
+                unit.used_this_turn = True
+                unit.action_log = {"type": "mine", "energy": 1, "gold": 1}
+            return success, msg
         elif unit.name == "Energizer":
-            return unit.generate(player)
+            success, msg = unit.generate(player)
+            if success:
+                unit.used_this_turn = True
+                unit.action_log = {"type": "generate", "energy": 1}
+            return success, msg
         elif unit.name == "Repeater":
             if target is None:
                 return False, "Overcharge requires a target unit"
             if not target.is_alive():
                 return False, f"Cannot overcharge {target.name} because it is about to be destroyed"
-            return unit.overcharge(player, target)
+            success, msg = unit.overcharge(player, target)
+            if success:
+                unit.used_this_turn = True
+                unit.action_log = {"type": "overcharge", "energy": 1, "target": target}
+            return success, msg
         elif unit.name == "Wall":
-            return unit.repair(player)
+            success, msg = unit.repair(player)
+            if success:
+                unit.used_this_turn = True
+                unit.action_log = {"type": "repair", "energy": 1}
+            return success, msg
         else:
             return False, f"{unit.name} has no usable ability"
+
+    def undo_action(self, unit_type, unit_number):
+        """Revert a unit's action and untap it."""
+        if self.game.phase != "Action":
+            return False, "Can only undo actions during Action Phase"
+            
+        player = self.game.current_player
+        units = player.get_units_by_type(unit_type)
+        
+        if not units or unit_number < 1 or unit_number > len(units):
+            return False, "Invalid unit"
+            
+        unit = units[unit_number - 1]
+        
+        if not unit.used_this_turn or not unit.action_log:
+            return False, "This unit was not used this turn or cannot be undone"
+            
+        log = unit.action_log
+        log_type = log.get("type")
+        
+        if log_type == "mine":
+            player.energy += log["energy"]
+            player.gold -= log["gold"]
+        elif log_type == "generate":
+            player.energy -= log["energy"]
+        elif log_type == "repair":
+            player.energy += log["energy"]
+            unit.exhausted = True # Re-exhaust after repair undo
+        elif log_type == "overcharge":
+            player.energy += log["energy"]
+            target = log["target"]
+            target.exhausted = True # Re-exhaust the target
+        elif log_type == "prepare_attack":
+            player.energy += log["energy"]
+            if unit in self.prepared_squad:
+                self.prepared_squad.remove(unit)
+            player.displayed_attack = sum(u.attack for u in self.prepared_squad)
+        else:
+            return False, f"Unknown action type: {log_type}"
+            
+        unit.exhausted = False
+        unit.used_this_turn = False
+        unit.action_log = None
+        
+        if unit.name == "Volatile":
+            # Volatile is tricky because it takes 99 damage and is removed from list?
+            # No, if it was 'used', it's still alive in this turn until end_phase removes it.
+            # Wait, prepare_attackers for Volatile does: u.take_damage(99); player.remove_dead_units()
+            # If so, it's GONE and cannot be undone. User said 'cannot untap just bought units'.
+            # If it's dead, it's not even in the UI. 
+            pass
+
+        return True, f"Undid {unit.name} action"
             
     def prepare_attackers(self, unit_list):
         """

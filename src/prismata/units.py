@@ -18,6 +18,13 @@ class Unit:
         self.damage_taken = 0  # Track damage for this turn
         self.fragile = False   # If True, unit is destroyed after blocking
         self.attack_cost = 0   # Energy cost to declare an attack
+        self.used_this_turn = False # Track if unit was used by PLAYER this turn
+        self.action_log = None # Store action details for undo
+        
+    def reset_turn_state(self):
+        """Reset turn-based flags."""
+        self.used_this_turn = False
+        self.action_log = None
         
     def ready(self):
         """Ready this unit (un-exhaust it)."""
