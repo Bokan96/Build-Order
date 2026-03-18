@@ -53,7 +53,9 @@ class PrismataWeb {
             endgameEnergy: document.getElementById('endgame-energy'),
             btnEndgameMenu: document.getElementById('btn-endgame-main-menu'),
             shopStaticPreview: document.getElementById('shop-static-preview'),
-            shopStaticPreviewImg: document.getElementById('shop-static-preview-img')
+            shopStaticPreviewImg: document.getElementById('shop-static-preview-img'),
+            sliderUIScale: document.getElementById('ui-scale-slider'),
+            uiScaleDisplay: document.getElementById('ui-scale-display')
         };
 
         this.hoverTimeout = null;
@@ -201,6 +203,9 @@ class PrismataWeb {
             console.error("Initialization failed:", error);
             this.updateLoadingText("Error: " + error.message);
         }
+
+        // Apply UI scale after everything is set up
+        this.initUIScale();
     }
 
     showWelcomeScreen() {
@@ -210,6 +215,35 @@ class PrismataWeb {
         }
         this._initParallaxBg();
         // event listeners are now in bindEvents
+    }
+
+    initUIScale() {
+        const saved = localStorage.getItem('uiScale');
+        let scale;
+        if (saved !== null) {
+            scale = parseFloat(saved);
+        } else {
+            // Auto-detect based on physical screen width
+            const w = window.screen.width;
+            if      (w <= 1366) scale = 0.85;
+            else if (w <= 1920) scale = 1.0;
+            else if (w <= 2560) scale = 1.2;
+            else                scale = 1.4;
+        }
+        this._applyUIScale(scale);
+        // Sync slider position to the current scale
+        if (this.elements.sliderUIScale) {
+            this.elements.sliderUIScale.value = Math.round(scale * 10);
+        }
+    }
+
+    _applyUIScale(scale) {
+        scale = Math.min(1.5, Math.max(0.7, scale));
+        document.documentElement.style.setProperty('--ui-scale', scale);
+        localStorage.setItem('uiScale', scale);
+        if (this.elements.uiScaleDisplay) {
+            this.elements.uiScaleDisplay.textContent = scale.toFixed(1) + 'x';
+        }
     }
 
     _initParallaxBg() {
@@ -2962,6 +2996,17 @@ class PrismataWeb {
             });
 
             speedSlider.addEventListener('change', () => {
+                this.sounds.play('CLICK');
+            });
+        }
+
+        // UI Scale slider
+        if (this.elements.sliderUIScale) {
+            this.elements.sliderUIScale.addEventListener('input', (e) => {
+                const scale = parseInt(e.target.value) / 10;
+                this._applyUIScale(scale);
+            });
+            this.elements.sliderUIScale.addEventListener('change', () => {
                 this.sounds.play('CLICK');
             });
         }

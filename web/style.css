@@ -1,4 +1,7 @@
 :root {
+    /* UI Scale — set by JS based on screen resolution or user preference */
+    --ui-scale: 1;
+
     /* Colors */
     --bg-dark: #0a0b10;
     --bg-surface: #12141d;
@@ -118,7 +121,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Header Styling */
 .game-header {
-    padding: 1rem 2rem;
+    padding: calc(0.75rem * var(--ui-scale)) calc(2rem * var(--ui-scale));
     border-bottom: 1px solid var(--glass-border);
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: var(--glass-blur);
@@ -152,11 +155,11 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .stat-badge {
-    padding: 0.4rem 1rem;
+    padding: calc(0.4rem * var(--ui-scale)) calc(1rem * var(--ui-scale));
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-sm);
-    font-size: 0.9rem;
+    font-size: calc(0.9rem * var(--ui-scale));
     font-weight: 600;
     display: flex;
     align-items: center;
@@ -193,12 +196,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     flex: 1;
     display: flex;
     flex-direction: row;
-    padding: 1.5rem;
-    gap: 1.5rem;
-    padding: 1.5rem;
-    gap: 1.5rem;
-    padding: 1.5rem;
-    gap: 1.5rem;
+    padding: calc(1.5rem * var(--ui-scale));
+    gap: calc(1.5rem * var(--ui-scale));
     overflow: hidden;
     align-items: stretch;
     position: relative; /* for absolute turn banner */
@@ -287,13 +286,13 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .player-separator {
-    width: 60px;
+    width: calc(60px * var(--ui-scale));
     height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     position: relative;
-    padding-top: 1.5rem;
+    padding-top: calc(1.5rem * var(--ui-scale));
     /* Align approximately with stat bars */
     flex-shrink: 0;
     order: 2;
@@ -311,8 +310,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .central-attack {
-    width: 65px;
-    height: 65px;
+    width: calc(65px * var(--ui-scale));
+    height: calc(65px * var(--ui-scale));
     border-radius: 50%;
     display: flex;
     flex-direction: column;
@@ -324,7 +323,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     z-index: 10;
     color: white;
     font-weight: 800;
-    font-size: 1.2rem;
+    font-size: calc(1.2rem * var(--ui-scale));
     position: relative;
     user-select: none;
     transition: box-shadow 0.3s, border-color 0.3s;
@@ -435,14 +434,14 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     justify-content: center;
     align-items: center;
     gap: 0.4rem;
-    font-size: 1.5rem;
+    font-size: calc(1.5rem * var(--ui-scale));
     font-weight: 700;
     /* cursor removed */
     user-select: none;
 }
 
 .resource .icon {
-    font-size: 1.5rem;
+    font-size: calc(1.5rem * var(--ui-scale));
     opacity: 0.9;
 }
 
@@ -481,9 +480,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     /* Allow wrapping */
     align-content: flex-start;
     /* Start from top */
-    gap: 1rem 1.5rem;
+    gap: calc(1rem * var(--ui-scale)) calc(1.5rem * var(--ui-scale));
     /* Vertical and horizontal gap */
-    padding: 1.2rem;
+    padding: calc(1.2rem * var(--ui-scale));
     height: 100%;
     min-width: 0;
     overflow-y: auto;
@@ -501,11 +500,11 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: 120px;
+    min-width: calc(120px * var(--ui-scale));
     position: relative;
     flex-shrink: 0;
     transition: all 0.3s ease;
-    padding: 10px 5px;
+    padding: calc(10px * var(--ui-scale)) calc(5px * var(--ui-scale));
     border-radius: var(--radius-md);
 }
 
@@ -518,9 +517,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Card Styling - Poker Size (2.5:3.5 ratio) */
 .unit-card {
-    width: 110px;
-    height: 154px;
-    flex: 0 0 110px;
+    width: calc(110px * var(--ui-scale));
+    height: calc(154px * var(--ui-scale));
+    flex: 0 0 calc(110px * var(--ui-scale));
     background: #1a1d2e;
     border: 2px solid var(--glass-border);
     border-radius: var(--radius-md);
@@ -547,7 +546,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Cards within column stack with overlap */
 .unit-column .unit-card {
-    margin-top: -80px;
+    margin-top: calc(-80px * var(--ui-scale));
     /* Overlap cards like solitaire */
 }
 
@@ -580,7 +579,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     /* Remove hover lift and old margins */
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
-    margin-top: -60px;
+    margin-top: calc(-60px * var(--ui-scale));
     /* Kept to account for rotation taking vertical space */
 }
 
@@ -929,7 +928,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Action Bar */
 .action-bar {
-    padding: 1rem 2rem;
+    padding: calc(0.75rem * var(--ui-scale)) calc(2rem * var(--ui-scale));
     border-top: 1px solid var(--glass-border);
     display: flex;
     justify-content: space-between;
@@ -2012,6 +2011,11 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* --- MOBILE RESPONSIVENESS --- */
 @media (max-width: 768px) {
+    /* Hide UI Scale slider on mobile — layout is handled by fixed mobile CSS */
+    .mobile-hide {
+        display: none !important;
+    }
+
     body {
         /* Keep game locked in view, don't let it scroll */
         overflow: hidden;
