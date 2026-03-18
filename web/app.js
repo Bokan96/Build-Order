@@ -2785,7 +2785,7 @@ class PrismataWeb {
             }
 
             preview.classList.remove('hidden');
-        }, 400);
+        }, 120);
     }
 
     handleUnitMouseLeave() {
@@ -2860,26 +2860,29 @@ class PrismataWeb {
         };
 
         // Global visual click effect and sound
-        document.body.addEventListener('click', (e) => {
+        document.body.addEventListener('mousedown', (e) => {
             // Only play generic click if it's not a button or clickable card
             const isInteractable = e.target.closest('button') || e.target.closest('.close-btn') || e.target.closest('.unit-card');
 
             if (!isInteractable) {
                 this.sounds.play('CLICK');
 
+                const offX = 6; // Offset to the right
+                const offY = 6; // Offset down
+
                 // Create Ripple Effect
                 const ripple = document.createElement('div');
                 ripple.className = 'click-ripple';
-                ripple.style.left = `${e.clientX}px`;
-                ripple.style.top = `${e.clientY}px`;
+                ripple.style.left = `${e.clientX + offX}px`;
+                ripple.style.top = `${e.clientY + offY}px`;
                 document.body.appendChild(ripple);
 
                 // Play particles
                 for (let i = 0; i < 5; i++) {
                     const particle = document.createElement('div');
                     particle.className = 'click-particle';
-                    particle.style.left = `${e.clientX}px`;
-                    particle.style.top = `${e.clientY}px`;
+                    particle.style.left = `${e.clientX + offX}px`;
+                    particle.style.top = `${e.clientY + offY}px`;
                     const angle = Math.random() * Math.PI * 2;
                     const distance = 20 + Math.random() * 30;
                     particle.style.setProperty('--tx', `${Math.cos(angle) * distance}px`);

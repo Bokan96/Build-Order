@@ -121,7 +121,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Header Styling */
 .game-header {
-    padding: calc(0.75rem * var(--ui-scale)) calc(2rem * var(--ui-scale));
+    padding: calc(1rem * var(--ui-scale)) calc(2.6rem * var(--ui-scale));
     border-bottom: 1px solid var(--glass-border);
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: var(--glass-blur);
@@ -155,11 +155,11 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .stat-badge {
-    padding: calc(0.4rem * var(--ui-scale)) calc(1rem * var(--ui-scale));
+    padding: calc(0.5rem * var(--ui-scale)) calc(1.3rem * var(--ui-scale));
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-sm);
-    font-size: calc(0.9rem * var(--ui-scale));
+    font-size: calc(1.2rem * var(--ui-scale));
     font-weight: 600;
     display: flex;
     align-items: center;
@@ -196,8 +196,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     flex: 1;
     display: flex;
     flex-direction: row;
-    padding: calc(1.5rem * var(--ui-scale));
-    gap: calc(1.5rem * var(--ui-scale));
+    padding: calc(2rem * var(--ui-scale));
+    gap: calc(2rem * var(--ui-scale));
     overflow: hidden;
     align-items: stretch;
     position: relative; /* for absolute turn banner */
@@ -286,13 +286,13 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .player-separator {
-    width: calc(60px * var(--ui-scale));
+    width: calc(78px * var(--ui-scale));
     height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     position: relative;
-    padding-top: calc(1.5rem * var(--ui-scale));
+    padding-top: calc(2rem * var(--ui-scale));
     /* Align approximately with stat bars */
     flex-shrink: 0;
     order: 2;
@@ -310,8 +310,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .central-attack {
-    width: calc(65px * var(--ui-scale));
-    height: calc(65px * var(--ui-scale));
+    width: calc(85px * var(--ui-scale));
+    height: calc(85px * var(--ui-scale));
     border-radius: 50%;
     display: flex;
     flex-direction: column;
@@ -323,7 +323,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     z-index: 10;
     color: white;
     font-weight: 800;
-    font-size: calc(1.2rem * var(--ui-scale));
+    font-size: calc(1.6rem * var(--ui-scale));
     position: relative;
     user-select: none;
     transition: box-shadow 0.3s, border-color 0.3s;
@@ -352,12 +352,12 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .central-attack .icon {
-    font-size: 1rem;
+    font-size: calc(1.3rem * var(--ui-scale));
     line-height: 1;
 }
 
 .central-attack #central-atk {
-    font-size: 1.7rem;
+    font-size: calc(2.2rem * var(--ui-scale));
     line-height: 1;
 }
 
@@ -434,14 +434,14 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     justify-content: center;
     align-items: center;
     gap: 0.4rem;
-    font-size: calc(1.5rem * var(--ui-scale));
+    font-size: calc(2rem * var(--ui-scale));
     font-weight: 700;
     /* cursor removed */
     user-select: none;
 }
 
 .resource .icon {
-    font-size: calc(1.5rem * var(--ui-scale));
+    font-size: calc(2rem * var(--ui-scale));
     opacity: 0.9;
 }
 
@@ -480,9 +480,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     /* Allow wrapping */
     align-content: flex-start;
     /* Start from top */
-    gap: calc(1rem * var(--ui-scale)) calc(1.5rem * var(--ui-scale));
+    gap: calc(1.3rem * var(--ui-scale)) calc(0.5rem * var(--ui-scale));
     /* Vertical and horizontal gap */
-    padding: calc(1.2rem * var(--ui-scale));
+    padding: calc(1.6rem * var(--ui-scale));
     height: 100%;
     min-width: 0;
     overflow-y: auto;
@@ -500,11 +500,11 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: calc(120px * var(--ui-scale));
+    min-width: calc(147px * var(--ui-scale));
     position: relative;
     flex-shrink: 0;
     transition: all 0.3s ease;
-    padding: calc(10px * var(--ui-scale)) calc(5px * var(--ui-scale));
+    padding: calc(13px * var(--ui-scale)) calc(2px * var(--ui-scale));
     border-radius: var(--radius-md);
 }
 
@@ -517,9 +517,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Card Styling - Poker Size (2.5:3.5 ratio) */
 .unit-card {
-    width: calc(110px * var(--ui-scale));
-    height: calc(154px * var(--ui-scale));
-    flex: 0 0 calc(110px * var(--ui-scale));
+    width: calc(143px * var(--ui-scale));
+    height: calc(200px * var(--ui-scale));
+    flex: 0 0 calc(143px * var(--ui-scale));
     background: #1a1d2e;
     border: 2px solid var(--glass-border);
     border-radius: var(--radius-md);
@@ -546,7 +546,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Cards within column stack with overlap */
 .unit-column .unit-card {
-    margin-top: calc(-80px * var(--ui-scale));
+    margin-top: calc(-104px * var(--ui-scale));
     /* Overlap cards like solitaire */
 }
 
@@ -579,7 +579,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     /* Remove hover lift and old margins */
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
-    margin-top: calc(-60px * var(--ui-scale));
+    margin-top: calc(-78px * var(--ui-scale));
     /* Kept to account for rotation taking vertical space */
 }
 
@@ -739,8 +739,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     right: 30px;
     top: 50%;
     transform: translateY(-50%);
-    width: 250px;
-    padding: 1.5rem;
+    width: calc(325px * var(--ui-scale));
+    padding: calc(1.9rem * var(--ui-scale));
     border-radius: var(--radius-lg);
     border: 2px solid var(--accent-primary);
     box-shadow: 0 0 40px rgba(0, 242, 255, 0.2);
@@ -776,7 +776,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .preview-name {
-    font-size: 1.5rem;
+    font-size: calc(1.9rem * var(--ui-scale));
     letter-spacing: 1px;
     color: var(--accent-primary);
     text-align: center;
@@ -787,7 +787,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     justify-content: center;
     align-items: center;
     gap: 1.5rem;
-    font-size: 1.1rem;
+    font-size: calc(1.4rem * var(--ui-scale));
     font-weight: 700;
     width: 100%;
 }
@@ -799,7 +799,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .preview-desc {
-    font-size: 0.9rem;
+    font-size: calc(1.2rem * var(--ui-scale));
     color: var(--text-dim);
     line-height: 1.4;
     text-align: center;
@@ -928,7 +928,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 /* Action Bar */
 .action-bar {
-    padding: calc(0.75rem * var(--ui-scale)) calc(2rem * var(--ui-scale));
+    padding: calc(1rem * var(--ui-scale)) calc(2.6rem * var(--ui-scale));
     border-top: 1px solid var(--glass-border);
     display: flex;
     justify-content: space-between;
@@ -1158,9 +1158,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .modal-content {
-    width: 600px;
-    max-width: 90vw;
-    padding: 2rem;
+    width: calc(600px * var(--ui-scale));
+    max-width: 95vw;
+    padding: calc(2rem * var(--ui-scale));
     border-radius: var(--radius-lg);
     border: 1px solid var(--glass-border);
     position: relative;
@@ -1170,9 +1170,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: calc(1rem * var(--ui-scale));
     border-bottom: 1px solid var(--glass-border);
-    padding-bottom: 1rem;
+    padding-bottom: calc(1rem * var(--ui-scale));
     position: relative;
     z-index: 10;
 }
@@ -1191,9 +1191,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--glass-border);
     color: var(--text-dim);
-    font-size: 1.5rem;
-    width: 40px;
-    height: 40px;
+    font-size: calc(1.5rem * var(--ui-scale));
+    width: calc(40px * var(--ui-scale));
+    height: calc(40px * var(--ui-scale));
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1245,8 +1245,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 .shop-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
+    gap: calc(0.5rem * var(--ui-scale));
+    margin-top: calc(1.5rem * var(--ui-scale));
 }
 
 .shop-header-btns {
@@ -1329,15 +1329,15 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    padding: 0.8rem 1.5rem;
+    gap: calc(1.3rem * var(--ui-scale));
+    padding: calc(1rem * var(--ui-scale)) calc(2rem * var(--ui-scale));
     background: rgba(255, 255, 255, 0.05);
     border-radius: var(--radius-sm);
     border: 1px solid var(--glass-border);
     /* cursor removed */
     transition: all 0.2s;
     font-weight: 700;
-    height: 50px;
+    height: calc(65px * var(--ui-scale));
     width: 100%;
     box-sizing: border-box;
 }
@@ -1396,8 +1396,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     left: calc(100% + 20px);
     top: 50%;
     transform: translateY(-50%);
-    width: 260px;
-    height: 420px;
+    width: calc(340px * var(--ui-scale));
+    height: calc(550px * var(--ui-scale));
     background: #1a1c26;
     border: 2px solid var(--accent-primary);
     border-radius: var(--radius-md);
@@ -1407,8 +1407,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 15px;
-    gap: 10px;
+    padding: calc(20px * var(--ui-scale));
+    gap: calc(13px * var(--ui-scale));
     transition: opacity 0.2s;
     pointer-events: none;
 }
@@ -1419,7 +1419,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 .shop-preview-name {
     margin: 0;
-    font-size: 1.2rem;
+    font-size: calc(1.6rem * var(--ui-scale));
     color: var(--accent-primary);
     text-align: center;
     width: 100%;
@@ -1431,13 +1431,13 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 .shop-static-preview-container img {
     width: 100%;
-    height: 250px;
+    height: calc(325px * var(--ui-scale));
     object-fit: contain;
 }
 
 .shop-preview-desc {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: calc(1.2rem * var(--ui-scale));
     color: var(--text-dim);
     text-align: center;
     line-height: 1.4;
@@ -1527,9 +1527,9 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 .menu-container {
     position: relative;
     z-index: 1;
-    max-width: 700px;
+    max-width: calc(910px * var(--ui-scale));
     width: 90%;
-    padding: 2rem;
+    padding: calc(2.6rem * var(--ui-scale));
     border-radius: var(--radius-lg);
     border: 2px solid var(--glass-border);
     text-align: center;
@@ -1537,7 +1537,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .game-title h1 {
-    font-size: 2.5rem;
+    font-size: calc(3.2rem * var(--ui-scale));
     font-weight: 800;
     letter-spacing: 4px;
     margin-bottom: 0.3rem;
@@ -1548,7 +1548,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .game-title h2 {
-    font-size: 1.8rem;
+    font-size: calc(2.3rem * var(--ui-scale));
     font-weight: 700;
     letter-spacing: 2px;
     margin-bottom: 0.4rem;
@@ -1556,16 +1556,17 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .game-title .tagline {
-    font-size: 0.95rem;
+    font-size: calc(1.2rem * var(--ui-scale));
     color: var(--text-dim);
     margin-bottom: 1rem;
     font-weight: 300;
 }
 
 .game-description {
-    margin: 1rem 0;
+    margin: 1.3rem 0;
     line-height: 1.6;
     color: var(--text-dim);
+    font-size: calc(1.3rem * var(--ui-scale));
 }
 
 .game-description p {
@@ -1580,8 +1581,8 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .menu-btn {
-    padding: 1rem 2rem;
-    font-size: 1.1rem;
+    padding: calc(1.3rem * var(--ui-scale)) calc(2.6rem * var(--ui-scale));
+    font-size: calc(1.4rem * var(--ui-scale));
     font-weight: 800;
     border: 2px solid transparent;
     /* cursor removed */
