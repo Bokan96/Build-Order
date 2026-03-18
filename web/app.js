@@ -2867,8 +2867,8 @@ class PrismataWeb {
             if (!isInteractable) {
                 this.sounds.play('CLICK');
 
-                const offX = 6; // Offset to the right
-                const offY = 6; // Offset down
+                const offX = 11; // Offset to the right
+                const offY = 7; // Offset down
 
                 // Create Ripple Effect
                 const ripple = document.createElement('div');

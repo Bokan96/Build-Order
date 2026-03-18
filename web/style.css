@@ -273,7 +273,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 .player-stats-bar {
     width: 100%;
     height: auto;
-    padding: 0.8rem 1.2rem;
+    padding: calc(0.8rem * var(--ui-scale)) calc(1.2rem * var(--ui-scale));
     border-radius: var(--radius-lg);
     border: 1px solid var(--glass-border);
     display: flex;
@@ -390,7 +390,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 }
 
 .player-identity .name {
-    font-size: 0.8rem;
+    font-size: calc(1.3rem * var(--ui-scale));
     font-weight: 700;
     text-transform: uppercase;
     text-align: center;
@@ -406,7 +406,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     display: flex;
     flex-direction: row;
     /* Horizontal resources */
-    gap: 1.5rem;
+    gap: calc(1.5rem * var(--ui-scale));
     align-items: center;
     min-width: 0;
 }
