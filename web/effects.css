@@ -108,14 +108,14 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) rotate(-90deg);
-    font-size: 3rem;
+    font-size: calc(5.2rem * var(--ui-scale)) !important;
     z-index: 25;
     pointer-events: none;
     user-select: none;
-    opacity: 0.7;
-    filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.9));
+    opacity: 0.95;
+    filter: drop-shadow(0 0 8px rgba(0, 0, 0, 1));
     line-height: 1;
-    transition: opacity 0.3s;
+    transition: opacity 0.3s, font-size 0.3s;
 }
 
 .attacking-swords {

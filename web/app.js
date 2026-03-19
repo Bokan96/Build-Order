@@ -624,10 +624,20 @@ class PrismataWeb {
                     this.log("Local Multiplayer Mode Started.", "system");
                 }
 
-                this.sounds.play('TURN_START');
-
                 this.setupMobileLayout();
+                
+                // Clear state triggers before first updateUI
+                this.currentTurnPlayer = null; 
                 this.updateUI();
+                
+                // Delay first turn sound to match banner
+                if (this.state && this.state.turn === 1) {
+                    setTimeout(() => {
+                        this.sounds.play('TURN_START');
+                    }, 1000);
+                } else {
+                    this.sounds.play('TURN_START');
+                }
             }, 500);
         }, 100);
     }
@@ -839,7 +849,18 @@ class PrismataWeb {
 
         // Update Header
         document.getElementById('turn-count').textContent = this.state.turn;
-        document.getElementById('phase-name').textContent = this.state.phase.toUpperCase();
+        
+        // Format phase name (e.g. ActionPhase -> ACTION PHASE)
+        let phaseText = this.state.phase;
+        if (phaseText.toLowerCase().includes('phase')) {
+            // Already includes "Phase" or "ActionPhase"
+            phaseText = phaseText.replace(/([A-Z])/g, ' $1').trim().toUpperCase();
+        } else {
+            // Append "PHASE" (e.g. "Action" -> "ACTION PHASE")
+            phaseText = phaseText.toUpperCase() + " PHASE";
+        }
+        
+        document.getElementById('phase-name').textContent = phaseText;
         document.getElementById('player-name-display').textContent = this.state.currentPlayer.toUpperCase();
 
         // Update Tab Title
@@ -857,25 +878,39 @@ class PrismataWeb {
 
         // Trigger Turn Transition Banner
         if (this.currentTurnPlayer !== this.state.currentPlayer) {
+            const oldPlayer = this.currentTurnPlayer;
             this.currentTurnPlayer = this.state.currentPlayer;
-            const banner = document.getElementById('turn-banner');
-            const bannerText = document.getElementById('turn-banner-text');
-            if (banner && bannerText) {
-                bannerText.textContent = `${this.state.currentPlayer.toUpperCase()}'S TURN`;
+            
+            const triggerBanner = () => {
+                const banner = document.getElementById('turn-banner');
+                const bannerText = document.getElementById('turn-banner-text');
+                if (banner && bannerText) {
+                    bannerText.textContent = `${this.state.currentPlayer.toUpperCase()}'S TURN`;
 
-                // Reset animation by cloning and replacing node
-                const newBanner = banner.cloneNode(true);
-                banner.parentNode.replaceChild(newBanner, banner);
+                    // Reset animation by cloning and replacing node
+                    const newBanner = banner.cloneNode(true);
+                    banner.parentNode.replaceChild(newBanner, banner);
 
-                newBanner.classList.remove('hidden');
-                this.isTurnTransitioning = true; // Lock interaction
-                document.body.classList.add('lockout'); // Visual lockout
-                
-                setTimeout(() => {
-                    newBanner.classList.add('hidden');
-                    this.isTurnTransitioning = false; // Unlock interaction
-                    document.body.classList.remove('lockout'); // Visual unlock
-                }, 2000); // 2s is the duration of bannerIn animation
+                    newBanner.classList.remove('hidden');
+                    this.isTurnTransitioning = true; // Lock interaction
+                    document.body.classList.add('lockout'); // Visual lockout
+                    
+                    setTimeout(() => {
+                        newBanner.classList.add('hidden');
+                        this.isTurnTransitioning = false; // Unlock interaction
+                        document.body.classList.remove('lockout'); // Visual unlock
+                        
+                        // RE-UPDATE BUTTONS: Ensure buttons return to 1.0 opacity after transition ends
+                        this.updateActionButtons();
+                    }, 2000); // 2s is the duration of bannerIn animation
+                }
+            };
+
+            // Delay for the very first turn of the game
+            if (this.state.turn === 1 && !oldPlayer) {
+                setTimeout(triggerBanner, 1000);
+            } else {
+                triggerBanner();
             }
         }
 
@@ -986,17 +1021,12 @@ class PrismataWeb {
             el.classList.remove('zero-resource');
         }
 
-        if (checkVal > oldVal) {
+        if (checkVal !== oldVal) {
             el.textContent = checkVal;
-            el.classList.add('resource-bump');
-            setTimeout(() => el.classList.remove('resource-bump'), 600);
-        } else if (checkVal < oldVal) {
-            // Animated count-down: update text gradually, colour change only at 0
-            this._animateDecrement(el, oldVal, checkVal);
-            el.classList.add('resource-drop');
-            setTimeout(() => el.classList.remove('resource-drop'), 600);
-        } else {
-            el.textContent = checkVal;
+            const animClass = checkVal > oldVal ? 'resource-bump' : 'resource-drop';
+            el.classList.add(animClass);
+            // Match the shorter animation duration (0.4s)
+            setTimeout(() => el.classList.remove(animClass), 400);
         }
     }
 
@@ -1305,11 +1335,15 @@ class PrismataWeb {
         const canAct = isMyTurn || (this.gameMode !== 'HOTSEAT' && this.gameMode !== 'ONLINE' && phase === 'Breach' && this.state.p1.units.some(u => u.attacking));
         // Logic simplification: In Hotseat, canAct is always true effectively
 
-        this.elements.btnEnd.disabled = !canAct;
-        this.elements.btnBuy.disabled = !isMyTurn || phase === 'Block' || phase === 'Breach';
+        this.elements.btnEnd.disabled = !canAct || this.isTurnTransitioning;
+        this.elements.btnBuy.disabled = !isMyTurn || phase === 'Block' || phase === 'Breach' || this.isTurnTransitioning;
 
         // Hide buttons completely when cannot act
         if (!canAct) {
+            this.elements.btnEnd.style.opacity = '0.3';
+            this.elements.btnBuy.style.opacity = '0.3';
+        } else if (this.isTurnTransitioning) {
+            // Intermediate state during transition
             this.elements.btnEnd.style.opacity = '0.3';
             this.elements.btnBuy.style.opacity = '0.3';
         } else {
