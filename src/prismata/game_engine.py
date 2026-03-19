@@ -120,7 +120,7 @@ class GameEngine:
             success, msg = unit.mine(player)
             if success:
                 unit.used_this_turn = True
-                unit.action_log = {"type": "mine", "energy": 1, "gold": 1}
+                unit.action_log = {"type": "mine", "energy": -1, "gold": 1}
             return success, msg
         elif unit.name == "Energizer":
             success, msg = unit.generate(player)
@@ -136,7 +136,7 @@ class GameEngine:
             success, msg = unit.overcharge(player, target)
             if success:
                 unit.used_this_turn = True
-                unit.action_log = {"type": "overcharge", "energy": 1, "target": target}
+                unit.action_log = {"type": "overcharge", "energy": -1, "target": target}
             return success, msg
         elif unit.name == "Wall":
             success, msg = unit.repair(player)
@@ -166,20 +166,30 @@ class GameEngine:
         log = unit.action_log
         log_type = log.get("type")
         
+        # Resource Check: Only check if undoING the action has a positive cost
+        # (e.g. if the action gave 1 Gold, undoing it costs 1 Gold)
+        gold_cost = log.get("gold", 0)
+        energy_cost = log.get("energy", 0)
+        
+        if gold_cost > 0 and player.gold < gold_cost:
+            return False, f"Not enough Gold to undo this action (needs {gold_cost})"
+        if energy_cost > 0 and player.energy < energy_cost:
+            return False, f"Not enough Energy to undo this action (needs {energy_cost})"
+
         if log_type == "mine":
-            player.energy += log["energy"]
-            player.gold -= log["gold"]
+            player.energy += abs(energy_cost) # Miner log: energy is -1, gold is 1
+            player.gold -= gold_cost
         elif log_type == "generate":
-            player.energy -= log["energy"]
+            player.energy -= energy_cost # Energizer log: energy is 1
         elif log_type == "repair":
-            player.energy += log["energy"]
+            player.energy += abs(energy_cost) # Wall log: energy is -1
             unit.exhausted = True # Re-exhaust after repair undo
         elif log_type == "overcharge":
-            player.energy += log["energy"]
+            player.energy += abs(energy_cost) # Repeater log: energy is -1
             target = log["target"]
             target.exhausted = True # Re-exhaust the target
         elif log_type == "prepare_attack":
-            player.energy += log["energy"]
+            player.energy += abs(energy_cost) # Strikers: 0, Wall: -1
             if unit in self.prepared_squad:
                 self.prepared_squad.remove(unit)
             player.displayed_attack = sum(u.attack for u in self.prepared_squad)

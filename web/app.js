@@ -14,6 +14,7 @@ class PrismataWeb {
         this.gameMode = 'AI'; // 'AI', 'HOTSEAT', or 'ONLINE'
         this.processingTurn = false;
         this.hasInteracted = false;
+        this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" message
 
         // Online multiplayer state
         this.multiplayer = new MultiplayerManager();
@@ -867,8 +868,11 @@ class PrismataWeb {
                 banner.parentNode.replaceChild(newBanner, banner);
 
                 newBanner.classList.remove('hidden');
+                this.isTurnTransitioning = true; // Lock interaction
+                
                 setTimeout(() => {
                     newBanner.classList.add('hidden');
+                    this.isTurnTransitioning = false; // Unlock interaction
                 }, 2000); // 2s is the duration of bannerIn animation
             }
         }
@@ -1336,6 +1340,7 @@ class PrismataWeb {
 
     async handleUnitClick(unit, unitNumber, columnElement) {
         try {
+            if (this.isTurnTransitioning) return;
             console.log("handleUnitClick", unit.type, unitNumber);
             if (this.targeting) {
                 // If we're in targeting mode, ignore clicks that come through the normal path
@@ -1694,6 +1699,7 @@ class PrismataWeb {
     }
 
     handleBlock(unit) {
+        if (this.isTurnTransitioning) return;
         const result = this.pyodide.runPython(`engine.assign_blockers([("${unit.type}", 1)])`);
         this.sounds.play('BLOCK');
 
@@ -1735,6 +1741,7 @@ class PrismataWeb {
     }
 
     handleAssignDamage(unit, unitNumber, isP1Target, column) {
+        if (this.isTurnTransitioning) return;
         // Calculate remaining in JS to avoid engine state issues
         const combat = this.state.combat;
         const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
@@ -1826,6 +1833,9 @@ class PrismataWeb {
 
     async handleEndTurn() {
         console.log("handleEndTurn called - Current Player:", this.state?.currentPlayer, "Phase:", this.state?.phase, "GameMode:", this.gameMode);
+
+        if (this.isTurnTransitioning) return;
+        this.isTurnTransitioning = true; // Block spam clicking
 
         // Cancel targeting if active
         if (this.targeting) {
@@ -2890,10 +2900,12 @@ class PrismataWeb {
     bindEvents() {
         // Main Game Buttons
         this.elements.btnEnd.onclick = () => {
+            if (this.isTurnTransitioning) return;
             this.sounds.play('CLICK');
             this.handleEndTurn();
         };
         this.elements.btnBuy.onclick = () => {
+            if (this.isTurnTransitioning) return;
             this.handleBuy();
         };
 
