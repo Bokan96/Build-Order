@@ -28,13 +28,13 @@ def run_simulation(p1_strat, p2_strat, sim_id, logger):
     while not game.game_over and game.turn_number < turn_limit:
         # Phase Auto-Advancement logic (same as main.py)
         if game.phase == "Start":
-            engine.defense_phase()
-            if game.phase != "Defense":
+            engine.block_phase()
+            if game.phase != "Block":
                 engine.action_phase()
         
         active_agent = agent1 if game.current_player == game.player1 else agent2
         
-        if game.phase == "Defense":
+        if game.phase == "Block":
             active_agent.execute_turn(game, engine)
             engine.end_phase()
             engine.action_phase()
@@ -57,7 +57,8 @@ def main():
     strats = ["Aggressive", "Guard", "Reactive", "Random"]
     tactical = "Tactical"
     
-    results = {}
+    
+    results: dict[str, dict[str, int]] = {}
     
     log_file = open("simulation_log.txt", "w")
     log_file.write("--- PRISMATA SIMULATION BATCH ---\n")

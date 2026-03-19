@@ -3,7 +3,14 @@ Game state management for Prismata Lite.
 Tracks players, resources, units, and base health.
 """
 
-from .units import create_unit, Miner, Energizer
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .units import create_unit, Miner, Energizer
+else:
+    try:
+        from .units import create_unit, Miner, Energizer
+    except ImportError:
+        from prismata.units import create_unit, Miner, Energizer
 
 class Player:
     """Represents a player in the game."""
@@ -138,7 +145,7 @@ class Player:
                 unit_groups[key].append(unit)
             
             # Compact display
-            unit_summary = []
+            unit_summary: list[str] = []
             for unit_type, units in unit_groups.items():
                 ready_count = sum(1 for u in units if not u.exhausted)
                 total = len(units)
@@ -155,7 +162,7 @@ class Player:
             key = unit.name
             unit_groups[key] = unit_groups.get(key, 0) + 1
         
-        unit_summary = []
+        unit_summary: list[str] = []
         for name in sorted(unit_groups.keys()):
             count = unit_groups[name]
             unit_summary.append(f"{count} {name}{'s' if count > 1 else ''}")

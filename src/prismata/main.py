@@ -4,10 +4,22 @@ A text-based implementation for testing game balance.
 """
 
 import os
-from .game_state import GameState
-from .game_engine import GameEngine
-from .units import UNIT_TYPES
-from .agent import Agent
+try:
+    from .game_state import GameState
+    from .game_engine import GameEngine
+    from .units import UNIT_TYPES
+    from .agent import Agent
+except ImportError:
+    try:
+        from prismata.game_state import GameState
+        from prismata.game_engine import GameEngine
+        from prismata.units import UNIT_TYPES
+        from prismata.agent import Agent
+    except ImportError:
+        from game_state import GameState
+        from game_engine import GameEngine
+        from units import UNIT_TYPES
+        from agent import Agent
 import time
 import random
 
@@ -435,15 +447,15 @@ def main():
         
         # Phase Auto-Advancement & AI logic
         if game.phase == "Start":
-            res = engine.defense_phase()
-            if game.phase != "Defense":
+            res = engine.block_phase()
+            if game.phase != "Block":
                 engine.action_phase()
             last_feedback = res
             continue # Re-show state with feedback
         
         # AI Turn Handling
         if is_ai_turn:
-            if game.phase == "Defense":
+            if game.phase == "Block":
                 print(f"\n[AI] {game.current_player.name} is defending...")
                 time.sleep(1)
                 if ai_agent and ai_agent.logger: ai_agent.logger.write(f"\n--- DEFENSE PHASE (AI) ---\n")
@@ -478,8 +490,8 @@ def main():
                     last_feedback = f"[AI] {ai_name} passed."
                 continue
 
-        # Custom prompt for Defense phase showing block progress
-        if game.phase == "Defense":
+        # Custom prompt for Block phase showing block progress
+        if game.phase == "Block":
             total_attack = sum(u.attack for u in engine.attacking_units)
             total_block = sum(u.block for u in engine.blocking_units)
             unblocked = max(0, total_attack - total_block)
@@ -493,8 +505,8 @@ def main():
                       print(f"\n[INFO] No blockers available. {attacker.name} must assign {unblocked} damage.")
                       handle_combat_resolution(game, engine, ai_agent)
                       
-                      # finalized defense
-                      msgs = ["Defense Phase Complete."]
+                      # finalized block
+                      msgs = ["Block Phase Complete."]
                       msgs.append(engine.end_phase())
                       game.current_player.units_purchased = 0
                       msgs.append(engine.action_phase())
@@ -507,7 +519,7 @@ def main():
             if is_ai_defending:
                  print(f"\n[AI Defending - {unblocked} damage unblocked] {game.other_player.name} (ATTACKER)> ", end="")
             else:
-                 print(f"\n[Defending {total_block}/{total_attack}] {game.current_player.name}> ", end="")
+                 print(f"\n[Blocking {total_block}/{total_attack}] {game.current_player.name}> ", end="")
         else:
             print(f"\n[{game.phase} Phase] {game.current_player.name}> ", end="")
         
@@ -534,8 +546,8 @@ def main():
             game.display_full_state()
             
         elif cmd == "buy":
-            if game.phase == "Defense":
-                print("[ERROR] Cannot buy units during Defense Phase. Use 'block' or 'end'.")
+            if game.phase == "Block":
+                print("[ERROR] Cannot buy units during Block Phase. Use 'block' or 'end'.")
                 continue
             if not args:
                 show_unit_shop()
@@ -547,8 +559,8 @@ def main():
             continue
             
         elif cmd == "use":
-            if game.phase == "Defense":
-                print("[ERROR] Cannot use abilities during Defense Phase. Use 'block' or 'end'.")
+            if game.phase == "Block":
+                print("[ERROR] Cannot use abilities during Block Phase. Use 'block' or 'end'.")
                 continue
             if not args:
                 print("[ERROR] Format: use <unit> [count|all] (e.g., 'use miner', 'use miner 3', 'use miner all')")
@@ -716,8 +728,8 @@ def main():
             continue
             
         elif cmd == "attack":
-            if game.phase == "Defense":
-                print("[ERROR] Cannot prepare attackers during Defense Phase. Use 'block' or 'end'.")
+            if game.phase == "Block":
+                print("[ERROR] Cannot prepare attackers during Block Phase. Use 'block' or 'end'.")
                 continue
             if not args:
                 print("[ERROR] Specify attackers (e.g., 'attack striker 1, striker 2')")
@@ -733,8 +745,8 @@ def main():
             continue
             
         elif cmd == "block":
-            if game.phase != "Defense":
-                print("[ERROR] Can only block during Defense Phase")
+            if game.phase != "Block":
+                print("[ERROR] Can only block during Block Phase")
                 continue
                 
             # Handle 'block end' to finish blocking early
@@ -749,7 +761,7 @@ def main():
                 
                 # Transition to Action phase
                 msgs = []
-                msgs.append("Defense Phase Complete.")
+                msgs.append("Block Phase Complete.")
                 msgs.append(engine.end_phase())
                 game.current_player.units_purchased = 0
                 msgs.append(engine.action_phase())
@@ -789,7 +801,7 @@ def main():
                 if total_block >= total_attack:
                     msgs = []
                     msgs.append(f"{message}")
-                    msgs.append("All damage blocked! Defense complete.")
+                    msgs.append("All damage blocked! Block complete.")
                     msgs.append(engine.end_phase())
                     game.current_player.units_purchased = 0
                     msgs.append(engine.action_phase())
@@ -800,13 +812,13 @@ def main():
                     msgs = []
                     msgs.append(f"{message}")
                     msgs.append("[INFO] No more blockers available. Attacker must assign remaining damage.")
-                     last_feedback = "\n".join(msgs)
+                    last_feedback = "\n".join(msgs)
                     
                     # Run assignment loop
                     handle_combat_resolution(game, engine, ai_agent)
                     
                     # After assignment, finalize defense
-                    msgs = ["Defense Phase Complete."]
+                    msgs = ["Block Phase Complete."]
                     msgs.append(engine.end_phase())
                     game.current_player.units_purchased = 0
                     msgs.append(engine.action_phase())
@@ -831,7 +843,7 @@ def main():
             continue
             
             # Check if all damage is assigned - auto-transition
-            if success and game.phase == "Defense":
+            if success and game.phase == "Block":
                  total_attack = sum(u.attack for u in engine.attacking_units)
                  total_block = sum(u.block for u in engine.blocking_units)
                  max_damage = max(0, total_attack - total_block)
@@ -839,7 +851,7 @@ def main():
                  
                  if remaining <= 0:
                      msgs = []
-                     msgs.append("[INFO] All damage assigned. Defense complete.")
+                     msgs.append("[INFO] All damage assigned. Block complete.")
                      msgs.append(engine.end_phase())
                      # Now start normal Action phase for the current player (defender)
                      # game.current_player.ready_all_units()
@@ -853,7 +865,7 @@ def main():
         elif cmd == "end":
             if ai_agent and ai_agent.logger: ai_agent.logger.write(f"Player ended {game.phase} phase.\n")
             
-            if game.phase == "Defense":
+            if game.phase == "Block":
                 # Shorthand for 'block end'
                 total_attack = sum(u.attack for u in engine.attacking_units)
                 total_block = sum(u.block for u in engine.blocking_units)
@@ -861,8 +873,8 @@ def main():
                 if remaining > 0:
                     handle_combat_resolution(game, engine, ai_agent)
                 
-                # Defense is DONE. Move to Resolve/Action.
-                msgs = ["Defense Phase Complete."]
+                # Block is DONE. Move to Resolve/Action.
+                msgs = ["Block Phase Complete."]
                 msgs.append(engine.end_phase())
                 game.current_player.units_purchased = 0
                 msgs.append(engine.action_phase())
@@ -894,8 +906,8 @@ def main():
             # Handle keyword-less unit use/attack/block
             resolved = resolve_unit_name(cmd)
             if resolved in UNIT_TYPES:
-                # Defense Phase: Shorthand Block (e.g. 'g', 'wall 2')
-                if game.phase == "Defense":
+                # Block Phase: Shorthand Block (e.g. 'g', 'wall 2')
+                if game.phase == "Block":
                     unit_list, error = parse_unit_list(command)
                     if error:
                         print(f"[ERROR] {error}")
@@ -915,7 +927,7 @@ def main():
                         
                         msgs = [message]
                         if total_block >= total_attack:
-                            msgs.append("All damage blocked! Defense complete.")
+                            msgs.append("All damage blocked! Block complete.")
                             msgs.append(engine.end_phase())
                             game.current_player.units_purchased = 0
                             msgs.append(engine.action_phase())
@@ -927,7 +939,7 @@ def main():
                             print(f"---\n{last_feedback}\n" + "-"*60)
                             
                             handle_combat_resolution(game, engine, ai_agent)
-                            msgs = ["Defense Phase Complete."]
+                            msgs = ["Block Phase Complete."]
                             msgs.append(engine.end_phase())
                             game.current_player.units_purchased = 0
                             msgs.append(engine.action_phase())

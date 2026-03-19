@@ -31,13 +31,13 @@ def simulate_game(strategy1_name, strategy2_name, game_id, debug=False):
         engine.start_phase()
         
         # 2. Defense Phase Logic
-        engine.defense_phase() # Checks for attackers
+        engine.block_phase() # Checks for attackers
         
-        if game.phase == "Defense":
+        if game.phase == "Block":
             active_agent.execute_turn(game, engine)
             # After defense turn, we need to finish defense
             # In agent.execute_turn, if breach happens, it handles resolution
-            result, msg = engine.finish_defense()
+            result, msg = engine.finish_blocking()
             
         # 3. Assignment Phase Logic
         if game.phase == "Assignment":
@@ -80,15 +80,15 @@ def run_batch(iterations=20):
             for i in range(iterations):
                 winner, turns, p1_hp, p2_hp = simulate_game(s1, s2, i)
                 if winner == "P1":
-                    p1_wins += 1
-                    global_p1_wins += 1
+                    p1_wins = p1_wins + 1
+                    global_p1_wins = global_p1_wins + 1
                 elif winner == "P2":
-                    p2_wins += 1
-                    global_p2_wins += 1
+                    p2_wins = p2_wins + 1
+                    global_p2_wins = global_p2_wins + 1
                 else:
-                    draws += 1
-                    global_draws += 1
-                total_turns += turns
+                    draws = draws + 1
+                    global_draws = global_draws + 1
+                total_turns = total_turns + turns
             
             avg_turns = total_turns / iterations
             results[(s1, s2)] = (p1_wins, p2_wins, draws, avg_turns)

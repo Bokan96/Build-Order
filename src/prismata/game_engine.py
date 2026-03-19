@@ -3,7 +3,16 @@ Game engine for Prismata Lite.
 Handles turn phases, combat resolution, and game flow.
 """
 
-from .game_state import GameState
+import typing
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .game_state import GameState
+else:
+    try:
+        from .game_state import GameState
+    except ImportError:
+        from prismata.game_state import GameState
 
 class GameEngine:
     """Manages turn phases and game logic."""
@@ -219,8 +228,8 @@ class GameEngine:
             return False, "Can only prepare attackers during Action Phase"
             
         player = self.game.current_player
-        total_energy_needed = 0
-        units_added_this_batch = 0
+        total_energy_needed: int = 0
+        units_added_this_batch: int = 0
         
         for unit_type, count in unit_list:
             units = player.get_units_by_type(unit_type)
@@ -235,6 +244,11 @@ class GameEngine:
                 else:
                     max_affordable = player.energy // ready_units[0].attack_cost
                     count = min(len(ready_units), max_affordable)
+            else:
+                try:
+                    count = int(count)
+                except (ValueError, TypeError):
+                    count = 0
             
             if count <= 0:
                 continue
@@ -243,7 +257,7 @@ class GameEngine:
                 return False, f"Not enough ready {unit_type}s (wanted {count}, have {len(ready_units)})"
                 
             # Check energy cost
-            energy_needed = 0
+            energy_needed: int = 0
             for i in range(count):
                 u = ready_units[i]
                 energy_needed += u.attack_cost
@@ -251,7 +265,7 @@ class GameEngine:
             if player.energy < energy_needed:
                  return False, f"Not enough energy to attack with {unit_type}s (Need {energy_needed}, Have {player.energy})"
 
-            player.energy -= energy_needed
+            player.energy = player.energy - energy_needed
             total_energy_needed += energy_needed
             
             # Exhaust units
@@ -287,7 +301,7 @@ class GameEngine:
             return False, "Can only assign blockers during Block Phase"
             
         defender = self.game.current_player
-        added_count = 0
+        added_count: int = 0
         
         for unit_type, count in unit_list:
             units = defender.get_units_by_type(unit_type)
@@ -296,6 +310,11 @@ class GameEngine:
             
             if count == "all":
                 count = len(available_units)
+            else:
+                try:
+                    count = int(count)
+                except (ValueError, TypeError):
+                    count = 0
                 
             if count <= 0:
                 continue
@@ -338,7 +357,7 @@ class GameEngine:
             return False, f"Cannot assign {assigned_damage} damage (only {available_now} available)"
             
         defender = self.game.current_player  # In Defense phase, current player IS defender
-        results = []
+        results: list[str] = []
         actual_damage_used = 0
         
         # Apply damage
@@ -431,7 +450,7 @@ class GameEngine:
             self.game.other_player.displayed_attack = 0
         self.game.other_player.displayed_block = 0
         
-        results = []
+        results: list[str] = []
         if dead_units_p1:
             results.append(f"{self.game.current_player.name} lost: {', '.join(u.name for u in dead_units_p1)}")
         if dead_units_p2:

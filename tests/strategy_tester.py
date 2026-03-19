@@ -1,8 +1,11 @@
 
 import random
-from game_state import GameState
-from game_engine import GameEngine
-from agent import Agent
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
+from prismata.game_state import GameState
+from prismata.game_engine import GameEngine
+from prismata.agent import Agent
 
 def simulate_game(strategy1_name, strategy2_name, game_id):
     game = GameState()
