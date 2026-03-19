@@ -869,10 +869,12 @@ class PrismataWeb {
 
                 newBanner.classList.remove('hidden');
                 this.isTurnTransitioning = true; // Lock interaction
+                document.body.classList.add('lockout'); // Visual lockout
                 
                 setTimeout(() => {
                     newBanner.classList.add('hidden');
                     this.isTurnTransitioning = false; // Unlock interaction
+                    document.body.classList.remove('lockout'); // Visual unlock
                 }, 2000); // 2s is the duration of bannerIn animation
             }
         }
@@ -1836,6 +1838,7 @@ class PrismataWeb {
 
         if (this.isTurnTransitioning) return;
         this.isTurnTransitioning = true; // Block spam clicking
+        document.body.classList.add('lockout'); // Visual lockout
 
         // Cancel targeting if active
         if (this.targeting) {

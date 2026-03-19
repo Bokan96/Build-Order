@@ -528,7 +528,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     flex-direction: column;
     padding: 0;
     /* cursor removed */
-    transition: box-shadow 0.2s, border-color 0.2s;
+    transition: box-shadow 0.5s, border-color 0.5s, transform 0.5s, filter 0.5s;
     overflow: hidden;
     z-index: 1;
     --unit-filter: brightness(1) grayscale(0);
@@ -972,7 +972,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     border-radius: var(--radius-lg);
     border: none;
     /* cursor removed */
-    transition: filter 0.2s;
+    transition: all 0.5s ease;
     text-transform: uppercase;
     letter-spacing: 1px;
     position: relative;
@@ -1043,6 +1043,26 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
     100% {
         left: 200%;
     }
+}
+
+/* Lockout Visual Feedback */
+body.lockout .action-btn,
+body.lockout .shop-btn {
+    filter: grayscale(1) brightness(0.6) !important;
+    cursor: default !important;
+    pointer-events: none !important;
+    box-shadow: none !important;
+}
+
+body.lockout .unit-card.interactive {
+    box-shadow: none !important;
+    border-color: var(--glass-border) !important;
+    cursor: default !important;
+}
+
+/* Ensure card rotation doesn't snap during lockout transition */
+body.lockout .unit-card.exhausted {
+    transition: transform 0s !important;
 }
 
 .action-btn:disabled,
