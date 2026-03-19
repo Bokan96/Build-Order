@@ -2004,10 +2004,10 @@ class PrismataWeb {
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
                     await new Promise(resolve => setTimeout(resolve, 800));
 
-                    // Wait for the "AI'S TURN" banner animation to finish (approx 2s)
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    // Wait for banner + extra buffer
+                    await new Promise(resolve => setTimeout(resolve, 4000));
 
-                    const speedMap = { '0': 1500, '1': 900, '2': 0 };
+                    const speedMap = { '0': 3500, '1': 2000, '2': 0 };
                     const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
 
                     if (stepDelayMs > 0) {
@@ -2114,10 +2114,10 @@ class PrismataWeb {
 
                 // AI Action Phase
                 this.log("AI Opponent is thinking...", "system");
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise(resolve => setTimeout(resolve, 4000));
 
                 try {
-                    const speedMap = { '0': 1500, '1': 900, '2': 0 };
+                    const speedMap = { '0': 3500, '1': 2000, '2': 0 };
                     const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
 
                     let boughtUnits = [];
@@ -2685,10 +2685,10 @@ class PrismataWeb {
 
         this.sounds.play('TURN_START');
         this.log("AI Opponent is thinking...", "system");
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 4000));
 
         try {
-            const speedMap = { '0': 1500, '1': 900, '2': 0 };
+            const speedMap = { '0': 3500, '1': 2000, '2': 0 };
             const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
             
             let boughtUnits = [];
