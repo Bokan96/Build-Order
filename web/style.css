@@ -2190,7 +2190,7 @@ body.lockout .unit-card.exhausted {
     .unit-card {
         width: 80px;
         height: 112px;
-        flex: 0 0 80px;
+        flex: 0 0 112px;
     }
 
     .unit-column .unit-card {
