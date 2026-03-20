@@ -1844,7 +1844,7 @@ class PrismataWeb {
                     success, msg = engine.resolve_combat([(target_type, hp_needed)])
             else:
                 success = False
-                msg = f"Invalid unit number {target_num}"
+                msg = f"Invalid ${unit.type} number"
                 
             {"success": success, "msg": msg}
         `);
@@ -2083,7 +2083,7 @@ class PrismataWeb {
                 // ===== AI MODE =====
                 if (this.state.phase === 'Block') {
                     // Player attacked - AI needs to defend
-                    const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
+                    const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_attacking_units)`);
                     const incomingAtk = incomingAtkProxy;
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
                     await new Promise(resolve => setTimeout(resolve, 800));
@@ -3378,10 +3378,10 @@ class PrismataWeb {
                     const hasPrepared = this.state.p1.atk > 0;
                     const hasEnergy = this.state.p1.energy > 0;
                     if (hasPrepared) {
-                        text = "Attack prepared! Enemy will have 2 Attack Power ⚔️ incoming to delegate to its blockers 🛡️.";
-                        // Removed highlightId here
+                        text = "Enemy will have 2 Attack Power ⚔️ incoming to assign to its blockers 🛡️. End your turn.";
+                        highlightId = "btn-end";
                     } else if (hasEnergy) {
-                        text = "Now use gathered Energy🔋 to <b>Tap the Striker</b>";
+                        text = "Now use your gathered Energy🔋 to Tap the Striker";
                         highlightId = "p1-units-striker-col";
                     } else {
                         text = "Tap your <b>Energizer</b> to get Energy🔋.";

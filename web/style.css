@@ -2496,12 +2496,12 @@ body.lockout .unit-card.exhausted {
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(10, 11, 16, 0.95);
-    border: 2px solid var(--accent-primary);
+    background: rgba(10, 11, 16, 0.98);
+    border: 4px solid #FFD700;
     border-radius: var(--radius-lg);
     padding: 20px 30px;
     z-index: 10002;
-    box-shadow: 0 0 40px rgba(0, 242, 255, 0.3);
+    box-shadow: 0 0 50px rgba(255, 215, 0, 0.2);
     max-width: 600px;
     width: 90%;
     backdrop-filter: var(--glass-blur);
@@ -2525,26 +2525,28 @@ body.lockout .unit-card.exhausted {
 }
 
 .tutorial-btn {
-    background: var(--accent-primary);
+    background: #FFD700;
     color: black;
     border: none;
-    padding: 8px 20px;
+    padding: 10px 25px;
     border-radius: var(--radius-sm);
-    font-weight: 700;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .tutorial-btn:hover {
     transform: scale(1.05);
-    box-shadow: 0 0 15px var(--accent-primary);
+    box-shadow: 0 0 20px #FFD700;
 }
 
 .tutorial-highlight {
     position: relative;
     z-index: 10006 !important;
-    box-shadow: 0 0 30px var(--accent-primary) !important;
-    border: 3px solid var(--accent-primary) !important;
+    box-shadow: 0 0 35px rgba(255, 215, 0, 0.6) !important;
+    border: 5px solid #FFD700 !important;
     border-radius: var(--radius-sm);
     pointer-events: auto !important;
 }
@@ -2554,7 +2556,7 @@ body.lockout .unit-card.exhausted {
 }
 
 @keyframes highlightPulse {
-    0% { box-shadow: 0 0 10px 2px var(--accent-primary); }
-    50% { box-shadow: 0 0 30px 10px var(--accent-primary); }
-    100% { box-shadow: 0 0 10px 2px var(--accent-primary); }
+    0% { box-shadow: 0 0 10px 2px rgba(255, 215, 0, 0.4); }
+    50% { box-shadow: 0 0 35px 12px rgba(255, 215, 0, 0.7); }
+    100% { box-shadow: 0 0 10px 2px rgba(255, 215, 0, 0.4); }
 }
