@@ -15,6 +15,10 @@ class PrismataWeb {
         this.processingTurn = false;
         this.hasInteracted = false;
         this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" message
+        this.isTutorial = false;
+        this.tutorialStep = 0;
+        this.lastTutorialStep = -1;
+        this.lastTutorialSubState = "";
 
         // Online multiplayer state
         this.multiplayer = new MultiplayerManager();
@@ -56,7 +60,8 @@ class PrismataWeb {
             shopStaticPreview: document.getElementById('shop-static-preview'),
             shopStaticPreviewImg: document.getElementById('shop-static-preview-img'),
             sliderUIScale: document.getElementById('ui-scale-slider'),
-            uiScaleDisplay: document.getElementById('ui-scale-display')
+            uiScaleDisplay: document.getElementById('ui-scale-display'),
+            btnHowToPlay: document.getElementById('btn-how-to-play')
         };
 
         this.hoverTimeout = null;
@@ -210,12 +215,18 @@ class PrismataWeb {
     }
 
     showWelcomeScreen() {
+        this.isTutorial = false; // Always reset when entering menu
+        
+        // Clear tutorial UI if coming from tutorial
+        const overlay = document.querySelector('.tutorial-overlay');
+        if (overlay) overlay.remove();
+        this.clearTutorialHighlights();
+
         this.elements.welcomeScreen.classList.remove('hidden');
         if (this.sounds && this.hasInteracted) {
             this.sounds.startMusic('bg_music - Aetherium_Chronicles.mp3');
         }
         this._initParallaxBg();
-        // event listeners are now in bindEvents
     }
 
     initUIScale() {
@@ -763,14 +774,25 @@ class PrismataWeb {
             game.setup_game()
             engine = GameEngine(game)
             
+            # Start the first turn properly
+            engine.start_phase()
+            engine.action_phase()
+
+            if "${this.isTutorial ? 'True' : 'False'}" == "True":
+                # Tutorial starting conditions: 2HP each, 6 Gold, 0 Energy, empty board
+                game.player1.base_health = 2
+                game.player2.base_health = 2
+                game.player1.gold = 6
+                game.player1.energy = 0
+                game.player1.units = []
+                game.player2.units = []
+                game.player1.lifetime_units = {}
+                game.player2.lifetime_units = {}
+            
             # Only create AI agent if not in HOTSEAT mode
             ai = None
             if "${this.gameMode}" != "HOTSEAT":
                 ai = Agent("${aiType}", logger=DummyLogger(), interactive=False)
-            
-            # Start the first turn properly
-            engine.start_phase()
-            engine.action_phase()
             
             # Helper to get state as dict for JS
             def get_ui_bundle():
@@ -902,12 +924,17 @@ class PrismataWeb {
                         
                         // RE-UPDATE BUTTONS: Ensure buttons return to 1.0 opacity after transition ends
                         this.updateActionButtons();
+
+                        if (this.isTutorial) {
+                            this.updateTutorialUI();
+                        }
                     }, 2000); // 2s is the duration of bannerIn animation
                 }
             };
 
             // Delay for the very first turn of the game
             if (this.state.turn === 1 && !oldPlayer) {
+                this.isTurnTransitioning = true; // Lock tutorial/UI immediately
                 setTimeout(triggerBanner, 1000);
             } else {
                 triggerBanner();
@@ -977,6 +1004,11 @@ class PrismataWeb {
         this.updateResourceDisplay(`${player}-gold`, data.gold);
         this.updateResourceDisplay(`${player}-energy`, data.energy);
         this.updateResourceDisplay(`${player}-hp`, data.hp, true);
+        
+        // Update tutorial at the very end of UI cycle
+        if (this.isTutorial) {
+            this.updateTutorialUI();
+        }
     }
 
     updateCentralAttack() {
@@ -1070,6 +1102,7 @@ class PrismataWeb {
 
             const column = document.createElement('div');
             column.className = 'unit-column';
+            column.id = `${container.id}-${type}-col`; // Add specific ID for highlighting
 
             // interactiveIndex: The card that glows and handles clicks (bottom-most/front-most)
             let interactiveIndex = -1;
@@ -1476,7 +1509,6 @@ class PrismataWeb {
                         this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
                     }
 
-                    // Special destruction animation for Volatile
                     if (unit.type === 'volatile' && animateCard) {
                         animateCard.classList.add('unit-destroy');
                         this.sounds.play('DESTROY');
@@ -1514,6 +1546,9 @@ class PrismataWeb {
 
                 if (abilitySuccess) {
                     this.sounds.play('CLICK');
+                    if (this.isTutorial && this.tutorialStep === 8 && unit.type === 'energizer') {
+                        this.advanceTutorial();
+                    }
                 }
 
                 // Send to remote player
@@ -1817,6 +1852,9 @@ class PrismataWeb {
         resultProxy.destroy();
 
         if (result.success) {
+            if (this.isTutorial && this.tutorialStep === 13) {
+                this.advanceTutorial();
+            }
             this.handleUnitMouseLeave(); // Ensure hover tooltip is cleared
             this.log(`Destroyed ${unit.name} #${unitNumber}`, 'important');
             this.sounds.play('DESTROY');
@@ -1882,6 +1920,15 @@ class PrismataWeb {
         // Prevent double-clicking
         if (this.processingTurn) return;
         this.processingTurn = true;
+
+        if (this.isTutorial) {
+            if (this.tutorialStep === 6) this.advanceTutorial();
+            else if (this.tutorialStep === 9) this.advanceTutorial();
+            else if (this.tutorialStep === 11) this.advanceTutorial();
+            else if (this.tutorialStep === 12) this.advanceTutorial();
+            else if (this.tutorialStep === 14) this.advanceTutorial();
+        }
+
         this.elements.btnEnd.disabled = true;
         this.elements.btnBuy.disabled = true;
 
@@ -1973,6 +2020,9 @@ class PrismataWeb {
                     " ; ".join(results) if results else "Breach finished"
                 `);
                 const msg = resProxy.toString();
+                if (this.isTutorial && this.tutorialStep === 13) {
+                    this.advanceTutorial();
+                }
                 if (msg !== "Breach finished") this.log(msg, "player1");
 
                 this.syncState();
@@ -2311,6 +2361,12 @@ class PrismataWeb {
             this.updateUI();
             this._triggerBuyAnimation(type);
             this.hideShop();
+
+            if (this.isTutorial) {
+                if (this.tutorialStep === 5 && type === 'energizer') this.advanceTutorial();
+                else if (this.tutorialStep === 7 && type === 'miner') this.advanceTutorial();
+                else if (this.tutorialStep === 10 && type === 'striker') this.advanceTutorial();
+            }
         } else {
             this.sounds.play('ERROR');
             this.log(`Error: ${result.msg}`, 'important');
@@ -2320,18 +2376,12 @@ class PrismataWeb {
     _triggerBuyAnimation(unitType) {
         // AI purchases during AI turn go to AI area (P2 usually, or whoever is current)
         const isP1Turn = this.state.currentPlayer === this.state.p1.name;
-        const area = isP1Turn ? this.elements.p1Units : this.elements.p2Units;
+        const colId = (isP1Turn ? 'p1-units-' : 'p2-units-') + unitType.toLowerCase() + '-col';
+        const col = document.getElementById(colId);
+        if (!col) return;
 
-        const columns = area.querySelectorAll('.unit-column');
-        for (const col of columns) {
-            const anyCard = col.querySelector(`[data-type="${unitType}"]`);
-            if (!anyCard) continue;
-
-            // Exhausted cards are the newest units (except Walls which aren't exhausted, so fallback to last child)
-            const exhaustedCards = Array.from(col.querySelectorAll('.unit-card.exhausted'));
-            const target = exhaustedCards.length > 0
-                ? exhaustedCards[exhaustedCards.length - 1]
-                : col.querySelector('.unit-card:last-child');
+        // The newest card is always the last child in its column
+        const target = col.querySelector('.unit-card:last-child');
 
             if (target) {
                 setTimeout(() => {
@@ -2341,8 +2391,6 @@ class PrismataWeb {
                     setTimeout(() => target.classList.remove('unit-shine'), 1100);
                 }, 300);
             }
-            break;
-        }
     }
 
     async processActionResult(proxy, cardElement) {
@@ -2403,7 +2451,7 @@ class PrismataWeb {
 
     showShop() {
         // Define base costs as integers for sorting
-        const shopUnits = [
+        let shopUnits = [
             { id: 'barrier', name: 'Barrier', cost: 1, energyCost: 0, desc: this.unitDescriptions['barrier'] },
             { id: 'miner', name: 'Miner', cost: 2, energyCost: 0, desc: this.unitDescriptions['miner'] },
             { id: 'energizer', name: 'Energizer', cost: 2, energyCost: 0, desc: this.unitDescriptions['energizer'] },
@@ -2413,6 +2461,11 @@ class PrismataWeb {
             { id: 'repeater', name: 'Repeater', cost: 3, energyCost: 0, desc: this.unitDescriptions['repeater'] },
             { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 0, desc: this.unitDescriptions['volatile'] }
         ];
+
+        if (this.isTutorial) {
+            // Tutorial Shop: Energizer, Miner, Striker only
+            shopUnits = shopUnits.filter(u => u.id === 'energizer' || u.id === 'miner' || u.id === 'striker');
+        }
 
         // Sort by cost ascending
         shopUnits.sort((a, b) => a.cost - b.cost);
@@ -2455,6 +2508,16 @@ class PrismataWeb {
             } else if (currentGold < u.cost) {
                 affordable = false;
             } else if (currentEnergy < totalEnergyReq) {
+                affordable = false;
+            }
+
+            if (this.isTutorial && this.tutorialStep === 5 && u.id !== 'energizer') {
+                affordable = false;
+            }
+            if (this.isTutorial && this.tutorialStep === 7 && u.id !== 'miner') {
+                affordable = false;
+            }
+            if (this.isTutorial && this.tutorialStep === 10 && u.id !== 'striker') {
                 affordable = false;
             }
 
@@ -2992,17 +3055,20 @@ class PrismataWeb {
 
             if (target.id === 'btn-pve') {
                 console.log("PvE Mode Selected via Delegation");
+                this.isTutorial = false;
                 this.gameMode = 'AI';
                 this.elements.welcomeScreen.classList.add('hidden');
                 this.showAISelection();
             } else if (target.id === 'btn-pvp') {
                 console.log("PvP Mode Selected via Delegation");
+                this.isTutorial = false;
                 this.gameMode = 'HOTSEAT';
                 this.selectedAI = 'Human';
                 this.elements.welcomeScreen.classList.add('hidden');
                 this.startGame();
             } else if (target.id === 'btn-online') {
                 console.log("Online Mode Selected via Delegation");
+                this.isTutorial = false;
                 this.showOnlineLobby();
             }
         });
@@ -3166,9 +3232,20 @@ class PrismataWeb {
                 this.log("Exited to Main Menu", "system");
             };
         }
+
+        if (this.elements.btnHowToPlay) {
+            this.elements.btnHowToPlay.onclick = () => {
+                this.sounds.play('CLICK');
+                this.startTutorial();
+            };
+        }
     }
 
     showEndGameScreen() {
+        if (this.isTutorial) {
+            this.showTutorialVictory();
+            return;
+        }
         this.sounds.play('VICTORY');
 
         let winnerName = this.state.winner;
@@ -3192,6 +3269,271 @@ class PrismataWeb {
         if (this.elements.endgameEnergy) this.elements.endgameEnergy.textContent = winnerState ? winnerState.energy : 0;
 
         if (this.elements.endgameModal) this.elements.endgameModal.classList.remove('hidden');
+    }
+
+    startTutorial() {
+        this.isTutorial = true;
+        this.tutorialStep = 1;
+        this.tutorialPart = 1;
+        this.gameMode = 'AI';
+        this.selectedAI = 'Pacifist';
+        this.elements.welcomeScreen.classList.add('hidden');
+        this.startGame();
+    }
+
+    advanceTutorial() {
+        this.tutorialStep++;
+        this.tutorialPart = 1;
+        this.updateUI();
+    }
+
+    updateTutorialUI() {
+        if (!this.isTutorial) return;
+        if (this.isTurnTransitioning) return;
+
+        let text = "";
+        let highlightId = "";
+        let buttonText = null;
+        let onButtonClick = null;
+        let subState = "";
+
+        switch (this.tutorialStep) {
+            case 1: // Start - Introduction
+                text = "Welcome to Build Order! Your goal is to destroy the enemy Base. Let's look at your resources.";
+                buttonText = "Next";
+                onButtonClick = () => this.advanceTutorial();
+                break;
+            case 2: // HP
+                text = "This is your Base HP❤️. If it reaches 0, you lose!<br>Both you and the AI start with 2 HP today.";
+                highlightId = "p1-hp-res";
+                buttonText = "Next";
+                onButtonClick = () => this.advanceTutorial();
+                break;
+            case 3: // Gold
+                text = "This is your Gold🪙. Use it to buy units from the Shop.";
+                highlightId = "p1-gold-res";
+                buttonText = "Next";
+                onButtonClick = () => this.advanceTutorial();
+                break;
+            case 4: // Energy
+                text = "This is your Energy🔋. Units use it for special actions.<br>Energy🔋 resets to 0 at the start of every turn.";
+                highlightId = "p1-energy-res";
+                buttonText = "Next";
+                onButtonClick = () => this.advanceTutorial();
+                break;
+            case 5: // Buy Energizer
+                text = "Time to build! Open the <b>SHOP</b> and buy an <b>Energizer</b>.<br>Energizer will provide 1 Energy🔋 every turn.";
+                highlightId = "btn-buy";
+                break;
+            case 6: // After buying Energizer
+                text = "New units enter <b>Tapped</b> 💤 and cannot act the turn they are bought. End your turn to proceed.";
+                highlightId = "btn-end";
+                break;
+            case 7: // Turn 2 - Buy Miner
+                if (this.state.turn >= 2 && this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                    text = "Now buy a <b>Miner</b>.<br>Miners convert 🔋 into 🪙!";
+                    highlightId = "btn-buy";
+                }
+                subState = this.state.currentPlayer;
+                break;
+            case 8: // Turn 2 - Use Energizer
+                const readyEnergizer = this.state.p1.units.filter(u => u.name === 'Energizer' && !u.exhausted).length > 0;
+                if (readyEnergizer) {
+                    text = "Tap your Energizer to generate Energy🔋";
+                    highlightId = "p1-units-energizer-col";
+                } else {
+                    text = "Energizer used! See your Energy🔋 increased? Now end your turn.";
+                    highlightId = "btn-end";
+                }
+                subState = `${readyEnergizer ? "ready" : "used"}_${this.state.currentPlayer}`;
+                break;
+            case 9: // Turn 2 - End
+                text = "Good job. End your turn to see how the AI responds.";
+                highlightId = "btn-end";
+                subState = this.state.currentPlayer;
+                break;
+            case 10: // Turn 3 - Gold vs Energy
+                if (this.state.turn >= 3 && this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                    const gold = this.state.p1.gold;
+                    
+                    if (gold >= 3) {
+                        text = "Now you have 3 Gold🪙! Let's get some offense.<br>Buy a <b>Striker</b>.";
+                        highlightId = "btn-buy";
+                    } else {
+                        text = "The AI just bought a unit! Notice your <b>Energy🔋 resets</b>, but your <b>Gold🪙 carries over</b>.<br>Gather 3 Gold by tapping Energizer and Miner.";
+                        highlightId = "p1-gold-res p1-energy-res";
+                    }
+                    // Avoid pop-out by only updating subState when the text might actually change
+                    subState = `${gold >= 3}_${this.state.currentPlayer}`;
+                } else {
+                    subState = this.state.currentPlayer;
+                }
+                break;
+            case 11: // After buying striker
+                text = "End your turn. Your Striker will be ready next turn!";
+                highlightId = "btn-end";
+                break;
+            case 12: // Turn 4 - Attack Power
+                if (this.state.turn >= 4 && this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                    const hasPrepared = this.state.p1.atk > 0;
+                    const hasEnergy = this.state.p1.energy > 0;
+                    if (hasPrepared) {
+                        text = "Attack prepared! Enemy will have 2 Attack Power ⚔️ incoming to delegate to its blockers 🛡️.";
+                        // Removed highlightId here
+                    } else if (hasEnergy) {
+                        text = "Now use gathered Energy🔋 to <b>Tap the Striker</b>";
+                        highlightId = "p1-units-striker-col";
+                    } else {
+                        text = "Tap your <b>Energizer</b> to get Energy🔋.";
+                        highlightId = "p1-units-energizer-col";
+                    }
+                    subState = `${hasPrepared}_${hasEnergy}_${this.state.currentPlayer}`;
+                } else {
+                    subState = this.state.currentPlayer;
+                }
+                break;
+            case 13: // Target decision
+                if (this.state.phase === 'Breach') {
+                    if (this.tutorialPart === 1) {
+                        text = "Enemy Miner Blocked 🛡️ 1 damage from your Total Attack Power⚔️ with its Miner. Any leftover unblocked damage will be assigned by the attacker during the Breach Phase.";
+                        buttonText = "Next";
+                        onButtonClick = () => {
+                           this.tutorialPart = 2;
+                           this.updateTutorialUI();
+                        };
+                    } else {
+                        text = "You have 1 more leftover Attack Power⚔️ to assign either to Enemy Base or enemy Miner thus destroying it.";
+                        highlightId = "p2-units-miner-col btn-end";
+                        buttonText = null;
+                    }
+                    subState = `${this.tutorialPart}_${this.state.currentPlayer}_${this.state.phase}`;
+                } else {
+                    text = "AI is blocking...";
+                    subState = `${this.state.phase}`;
+                }
+                break;
+            case 14: // Final turn start
+                if (this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                    text = "The enemy is wide open! Finish this!";
+                } else {
+                    text = "";
+                }
+                subState = this.state.currentPlayer + "_" + this.state.phase;
+                break;
+        }
+
+        if (this.tutorialStep === this.lastTutorialStep && subState === this.lastTutorialSubState) {
+            return;
+        }
+        this.lastTutorialStep = this.tutorialStep;
+        this.lastTutorialSubState = subState;
+
+        const oldOverlay = document.querySelector('.tutorial-overlay');
+        if (oldOverlay) oldOverlay.remove();
+        this.clearTutorialHighlights();
+
+        if (text === "") return;
+
+        this.showTutorialOverlay(text, buttonText, onButtonClick, highlightId);
+    }
+
+    showTutorialVictory() {
+        if (document.getElementById('tutorial-victory-overlay')) return;
+        this.sounds.play('VICTORY');
+        const overlay = document.createElement('div');
+        overlay.id = 'tutorial-victory-overlay';
+        overlay.classList.add('tutorial-overlay'); // Reuses existing overlay styles
+        overlay.style.zIndex = '10005';
+        overlay.innerHTML = `
+            <div class="tutorial-box victory-box glass danger animate-in" style="max-width: 600px; text-align: center; padding: 3rem; border: 3px solid gold;">
+                <h1 style="color: gold; font-size: 3rem; margin-bottom: 1.5rem; text-shadow: 0 0 15px rgba(255, 215, 0, 0.5);">CONGRATULATIONS! ⚔️</h1>
+                <p style="font-size: 1.4rem; line-height: 1.6; margin-bottom: 2.5rem; color: white;">
+                    Thank you for playing the tutorial! 🥳<br>
+                    You have mastered the basics of Build Order.<br>
+                    Now you are ready to face real opponents or more advanced bots.<br><br>
+                    <b style="color: var(--accent-primary); font-size: 1.6rem;">Good luck on your journey!</b>
+                </p>
+                <button id="btn-tutorial-victory-exit" class="menu-btn primary" style="padding: 1rem 3rem; font-size: 1.5rem; min-width: 250px;">MAIN MENU</button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        
+        // Grey out and disable board
+        if (this.elements.btnEnd) {
+            this.elements.btnEnd.style.filter = 'grayscale(1) opacity(0.5)';
+            this.elements.btnEnd.style.pointerEvents = 'none';
+        }
+        if (this.elements.btnBuy) {
+            this.elements.btnBuy.style.filter = 'grayscale(1) opacity(0.5)';
+            this.elements.btnBuy.style.pointerEvents = 'none';
+        }
+        if (this.elements.p1Units) {
+            this.elements.p1Units.style.filter = 'grayscale(1) opacity(0.5)';
+            this.elements.p1Units.style.pointerEvents = 'none';
+        }
+        if (this.elements.p2Units) {
+            this.elements.p2Units.style.filter = 'grayscale(1) opacity(0.5)';
+            this.elements.p2Units.style.pointerEvents = 'none';
+        }
+
+        document.getElementById('btn-tutorial-victory-exit').onclick = () => {
+            overlay.remove();
+            if (this.elements.btnEnd) {
+                this.elements.btnEnd.style.filter = '';
+                this.elements.btnEnd.style.pointerEvents = '';
+            }
+            if (this.elements.btnBuy) {
+                this.elements.btnBuy.style.filter = '';
+                this.elements.btnBuy.style.pointerEvents = '';
+            }
+            if (this.elements.p1Units) {
+                this.elements.p1Units.style.filter = '';
+                this.elements.p1Units.style.pointerEvents = '';
+            }
+            if (this.elements.p2Units) {
+                this.elements.p2Units.style.filter = '';
+                this.elements.p2Units.style.pointerEvents = '';
+            }
+            this.showWelcomeScreen();
+        };
+    }
+
+    showTutorialOverlay(text, buttonText, onClick, highlightId) {
+        const overlay = document.createElement('div');
+        overlay.className = 'tutorial-overlay';
+        
+        let html = `<div class="tutorial-text">${text}</div>`;
+        if (buttonText) {
+            html += `<button class="tutorial-btn">${buttonText}</button>`;
+        }
+        overlay.innerHTML = html;
+        
+        if (buttonText && onClick) {
+            overlay.querySelector('.tutorial-btn').onclick = () => {
+                this.sounds.play('CLICK');
+                onClick();
+            };
+        }
+        
+        document.body.appendChild(overlay);
+
+        if (highlightId) {
+            const ids = highlightId.trim().split(/\s+/);
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.add('tutorial-highlight');
+                    el.classList.add('tutorial-pulse');
+                }
+            });
+        }
+    }
+
+    clearTutorialHighlights() {
+        document.querySelectorAll('.tutorial-highlight').forEach(el => {
+            el.classList.remove('tutorial-highlight');
+            el.classList.remove('tutorial-pulse');
+        });
     }
     initCustomCursor() {
         const cursor = document.getElementById('custom-cursor');

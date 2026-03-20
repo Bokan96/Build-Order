@@ -40,6 +40,13 @@ class Agent:
             self.turn_actions = []
             self._last_turn_key = turn_key
 
+        if strat == "Pacifist":
+            # Pacifist does absolutely nothing
+            if game.phase == "Block":
+                # End phase if in block (though it shouldn't have attackers unless forced)
+                pass 
+            return []
+
         if game.phase == "Block":
             self.handle_defense(game, engine)
             
@@ -77,6 +84,29 @@ class Agent:
         steps = []
         active_player = game.current_player
         strat = self.strategy_name
+        if strat == "Pacifist":
+            # For tutorial: Turn 3 AI buys a Miner
+            if game.turn_number == 4 and active_player.name == game.player2.name: 
+                # Turn 1: P1, Turn 2: AI, Turn 3: P1, Turn 4: AI
+                # Turn 1: P1, AI
+                # Turn 2: P1, AI
+                # Turn 3: P1, AI
+                # Player Turn 3 end -> AI Turn 3 start. 
+                # Let's check turn_number logic. Turn increment happens in end_turn.
+                # Turn 1: P1 (Action), AI (Action)
+                # Turn 2: P1, AI
+                # Turn 3: P1, AI (This is where it should buy Miner)
+                # In GameState, turn_number starts at 1 and increments every end_turn.
+                # P1 Turn 1: turn=1
+                # AI Turn 1: turn=2
+                # P1 Turn 2: turn=3
+                # AI Turn 2: turn=4
+                # P1 Turn 3: turn=5
+                # AI Turn 3: turn=6
+                steps.append({'type': 'buy', 'unit': 'miner', 'label': 'AI bought Miner'})
+            
+            steps.append({'type': 'end', 'label': 'End Turn'})
+            return steps
 
         # --- Simulate resource state locally so we can plan without mutating ---
         sim_gold   = active_player.gold
@@ -260,6 +290,8 @@ class Agent:
             for u in opts:
                 if can(u):  # can() already checks the cap
                     return u
+        elif strat == "Pacifist":
+            return None
         # Fallback — can() checks cap so these are safe
         if can("striker"): return "striker"
         if can("miner"):   return "miner"

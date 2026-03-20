@@ -54,7 +54,7 @@
                 <button id="btn-main-settings" class="menu-btn secondary">
                     SETTINGS
                 </button>
-                <button id="btn-how-to-play" class="menu-btn" style="pointer-events: none; opacity: 0.7;">
+                <button id="btn-how-to-play" class="menu-btn secondary">
                     HOW TO PLAY
                 </button>
             </div>
@@ -236,7 +236,7 @@
             </section>
 
             <div class="player-separator">
-                <div class="central-attack glass" title="Total Attack Power">
+                <div id="central-attack-container" class="central-attack glass" title="Total Attack Power">
                     <span class="icon">⚔️</span>
                     <span id="central-atk">0</span>
                 </div>
@@ -249,12 +249,12 @@
                         <span class="name" id="p1-name">PLAYER 1</span>
                     </div>
                     <div class="resource-row">
-                        <div class="resource energy"
+                        <div id="p1-energy-res" class="resource energy"
                             title="Energy: Used to activate unit abilities and prepare attacks."><span
                                 class="icon">🔋</span> <span id="p1-energy">0</span></div>
-                        <div class="resource gold" title="Gold: Used to buy new units from the Shop."><span
+                        <div id="p1-gold-res" class="resource gold" title="Gold: Used to buy new units from the Shop."><span
                                 class="icon">🪙</span> <span id="p1-gold">2</span></div>
-                        <div class="resource hp" title="Health: If this reaches 0, you lose the game."><span
+                        <div id="p1-hp-res" class="resource hp" title="Health: If this reaches 0, you lose the game."><span
                                 class="icon">❤️</span> <span id="p1-hp">30</span></div>
                     </div>
                 </div>
