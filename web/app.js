@@ -3508,6 +3508,13 @@ class PrismataWeb {
         }
         overlay.innerHTML = html;
         
+        // Mobile UX: Click overlay to flip position if it covers something
+        overlay.onclick = (e) => {
+            if (e.target.closest('.tutorial-btn')) return;
+            overlay.classList.toggle('top');
+            this.sounds.play('CLICK');
+        };
+        
         if (buttonText && onClick) {
             overlay.querySelector('.tutorial-btn').onclick = () => {
                 this.sounds.play('CLICK');
