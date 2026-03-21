@@ -2083,7 +2083,7 @@ class PrismataWeb {
                 // ===== AI MODE =====
                 if (this.state.phase === 'Block') {
                     // Player attacked - AI needs to defend
-                    const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_attacking_units)`);
+                    const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
                     const incomingAtk = incomingAtkProxy;
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
                     await new Promise(resolve => setTimeout(resolve, 800));
