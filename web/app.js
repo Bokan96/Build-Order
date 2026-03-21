@@ -2636,6 +2636,15 @@ class PrismataWeb {
             previewCard.classList.remove('disabled-preview');
             document.querySelectorAll('.shop-list-item.selected').forEach(el => el.classList.remove('selected'));
 
+            // On mobile tutorial, clear shop button highlight once entered
+            if (this.isTutorial) {
+                const shopBtn = document.getElementById('btn-buy');
+                if (shopBtn) {
+                    shopBtn.classList.remove('tutorial-highlight');
+                    shopBtn.classList.remove('tutorial-pulse');
+                }
+            }
+
             // Add scroll arrow buttons (up and down)
             const gridParent = this.elements.shopGrid.parentNode;
             let scrollArrowUp = gridParent.querySelector('.shop-scroll-arrow.up');
@@ -3501,6 +3510,25 @@ class PrismataWeb {
     showTutorialOverlay(text, buttonText, onClick, highlightId) {
         const overlay = document.createElement('div');
         overlay.className = 'tutorial-overlay';
+
+        // Flip certain messages to top on mobile/small screens
+        if (window.innerWidth <= 768) {
+            const flipList = [
+                "Time to build! Open the SHOP and buy an Energizer",
+                "New units enter Tapped",
+                "Now buy a Miner",
+                "Tap your Energizer to generate",
+                "Good job. End your turn to see how the AI responds",
+                "The AI just bought a unit!",
+                "Now you have 3 Gold",
+                "End your turn.",
+                "Enemy will have 2 Attack Power incoming"
+            ];
+            const cleanText = text.replace(/<[^>]*>/g, '').trim();
+            if (flipList.some(msg => cleanText.startsWith(msg))) {
+                overlay.classList.add('top');
+            }
+        }
         
         let html = `<div class="tutorial-text">${text}</div>`;
         if (buttonText) {
