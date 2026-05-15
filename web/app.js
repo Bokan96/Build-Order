@@ -227,6 +227,45 @@ class PrismataWeb {
             this.sounds.startMusic('bg_music - Aetherium_Chronicles.mp3');
         }
         this._initParallaxBg();
+
+        // Prompt first-time players
+        if (!localStorage.getItem('tutorialCompleted') && !localStorage.getItem('tutorialPromptDismissed')) {
+            setTimeout(() => this._showTutorialPrompt(), 500);
+        }
+    }
+
+    _showTutorialPrompt() {
+        if (document.getElementById('tutorial-prompt-overlay')) return;
+        
+        const overlay = document.createElement('div');
+        overlay.id = 'tutorial-prompt-overlay';
+        overlay.className = 'tutorial-overlay';
+        overlay.style.zIndex = '10005';
+        
+        overlay.innerHTML = `
+            <div class="tutorial-box glass primary animate-in" style="max-width: 500px; text-align: center; padding: 2rem;">
+                <h2 style="margin-bottom: 1rem; color: var(--accent-primary);">Welcome to Build Order!</h2>
+                <p style="margin-bottom: 2rem; font-size: 1.2rem;">It looks like this is your first time playing. Would you like to play the tutorial?</p>
+                <div style="display: flex; gap: 1rem; justify-content: center;">
+                    <button id="btn-tutorial-yes" class="action-btn accent">Yes, Start Tutorial</button>
+                    <button id="btn-tutorial-no" class="action-btn danger">No, Skip</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        document.getElementById('btn-tutorial-yes').onclick = () => {
+            this.sounds.play('CLICK');
+            overlay.remove();
+            this.startTutorial();
+        };
+        
+        document.getElementById('btn-tutorial-no').onclick = () => {
+            this.sounds.play('CLICK');
+            localStorage.setItem('tutorialPromptDismissed', 'true');
+            overlay.remove();
+        };
     }
 
     initUIScale() {
@@ -1105,6 +1144,7 @@ class PrismataWeb {
             column.id = `${container.id}-${type}-col`; // Add specific ID for highlighting
 
             // interactiveIndex: The card that glows and handles clicks (bottom-most/front-most)
+            // PRIORITIZE ready units; fall back to undoable
             let interactiveIndex = -1;
             for (let i = unitsByType[type].length - 1; i >= 0; i--) {
                 const u = unitsByType[type][i];
@@ -1114,9 +1154,15 @@ class PrismataWeb {
                         interactiveIndex = i;
                         break;
                     }
-                } else {
-                    const isUndoable = isFriendly && this.state.phase === 'Action' && u.usedThisTurn;
-                    if (!u.exhausted || isUndoable || (isFriendly && u.type === 'wall')) {
+                } else if (!u.exhausted || (isFriendly && u.type === 'wall')) {
+                    interactiveIndex = i;
+                    break;
+                }
+            }
+            if (interactiveIndex === -1) {
+                for (let i = unitsByType[type].length - 1; i >= 0; i--) {
+                    const u = unitsByType[type][i];
+                    if (isFriendly && this.state.phase === 'Action' && u.usedThisTurn) {
                         interactiveIndex = i;
                         break;
                     }
@@ -1127,10 +1173,18 @@ class PrismataWeb {
             let rotationIndex = -1;
             for (let i = 0; i < unitsByType[type].length; i++) {
                 const u = unitsByType[type][i];
-                const isUndoable = isFriendly && this.state.phase === 'Action' && u.usedThisTurn;
-                if (!u.exhausted || isUndoable || (isFriendly && u.type === 'wall')) {
+                if (!u.exhausted || (isFriendly && u.type === 'wall')) {
                     rotationIndex = i;
                     break;
+                }
+            }
+            if (rotationIndex === -1) {
+                for (let i = 0; i < unitsByType[type].length; i++) {
+                    const u = unitsByType[type][i];
+                    if (isFriendly && this.state.phase === 'Action' && u.usedThisTurn) {
+                        rotationIndex = i;
+                        break;
+                    }
                 }
             }
 
@@ -1264,7 +1318,7 @@ class PrismataWeb {
                     card.onclick = (e) => {
                         e.stopPropagation();
                         if (canActInAction) {
-                            this.handleUnitClick(unit, rotationUnitNum, column);
+                            this.handleUnitClick(unit, unitNumber, column);
                         } else if (canBlockInBlock) {
                             this.handleBlock(unit);
                         } else if (canDamageInBreach) {
@@ -3448,6 +3502,7 @@ class PrismataWeb {
 
     showTutorialVictory() {
         if (document.getElementById('tutorial-victory-overlay')) return;
+        localStorage.setItem('tutorialCompleted', 'true');
         this.sounds.play('VICTORY');
         const overlay = document.createElement('div');
         overlay.id = 'tutorial-victory-overlay';

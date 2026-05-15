@@ -189,7 +189,13 @@ class Agent:
         for u in ready_units:
             should_attack = False
             if u.name == "Striker": should_attack = True
-            elif u.name == "Guard" and (enemy_potential_attack == 0): should_attack = True
+            elif u.name == "Guard":
+                enemy_blockers = [b for b in enemy.units if b.block > 0 and not b.exhausted]
+                enemy_has_striker = any(s.name == "Striker" for s in enemy.units if s.is_alive())
+                if enemy_potential_attack == 0:
+                    should_attack = True
+                elif not enemy_blockers and enemy_has_striker:
+                    should_attack = True
             elif u.name == "Volatile" and u.attack > 0: should_attack = True
             elif u.name not in ["Striker", "Guard", "Volatile"] and u.attack > 0: should_attack = True
             if should_attack and energy_avail >= u.attack_cost:
@@ -981,10 +987,14 @@ class Agent:
                     if u.name == "Striker":
                         should_attack = True # Strikers ALWAYS attack if energy available
                     elif u.name == "Guard":
-                        # Guards attack if safe OR if we have a breach (destroying enemy units > blocking them)
+                        # Guards attack if safe OR if we have a breach OR if we can kill a Striker
+                        enemy_blockers = [b for b in enemy.units if b.block > 0 and not b.exhausted]
+                        enemy_has_striker = any(s.name == "Striker" for s in enemy.units if s.is_alive())
                         if enemy_potential_attack == 0:
                             should_attack = True
                         elif potential_total_damage > enemy_block:
+                            should_attack = True
+                        elif not enemy_blockers and enemy_has_striker:
                             should_attack = True
                     elif u.name == "Volatile" and (u.attack > 0): # Detonated volatiles always attack
                         should_attack = True

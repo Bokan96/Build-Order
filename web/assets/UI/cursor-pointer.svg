@@ -8,5 +8,5 @@
       </feMerge>
     </filter>
   </defs>
-  <path d="M10,8 L24,14 L16,18 L12,26 Z" fill="#39ff14" stroke="#ffffff" stroke-width="1.5" filter="url(#glow)" />
+  <path d="M6,7 L22,12 L14,15 L10,23 Z" fill="#39ff14" stroke="#ffffff" stroke-width="1.5" filter="url(#glow)" />
 </svg>
