@@ -35,3 +35,10 @@ Thumbs.db
 .idea/
 .agent/
 /web/assets/cards/older versions
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
