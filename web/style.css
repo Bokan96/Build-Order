@@ -56,6 +56,9 @@ button {
 body {
     font-family: 'Outfit', sans-serif;
     background-color: var(--bg-dark);
+    background-image: radial-gradient(circle at top, rgba(0, 242, 255, 0.05), transparent 60%),
+                      radial-gradient(circle at bottom, rgba(189, 0, 255, 0.05), transparent 60%),
+                      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
     color: var(--text-main);
     overflow: hidden;
     height: 100vh;
@@ -131,7 +134,7 @@ body, button, .unit-card, .ai-choice, .shop-list-item {
 
 .header-content {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     max-width: 1400px;
     margin: 0 auto;
@@ -1096,11 +1099,11 @@ body.lockout .unit-card.exhausted {
 }
 
 .loading-logo {
-    font-size: 3.5rem;
-    font-weight: 800;
-    letter-spacing: 4px;
-    color: var(--accent-primary);
-    margin: 0 0 2rem 0;
+    max-width: 400px;
+    width: 80vw;
+    height: auto;
+    margin: 0 auto 2rem auto;
+    display: block;
     animation: loader-pulse 2s infinite ease-in-out;
 }
 
@@ -1564,9 +1567,39 @@ body.lockout .unit-card.exhausted {
     width: 90%;
     padding: calc(2.6rem * var(--ui-scale));
     border-radius: var(--radius-lg);
-    border: 2px solid var(--glass-border);
+    border: 2px solid rgba(0, 242, 255, 0.3);
     text-align: center;
     margin: auto;
+    background: url("data:image/svg+xml,%3Csvg width='28' height='49' viewBox='0 0 28 49' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2300f2ff' fill-opacity='0.03' fill-rule='evenodd'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/svg%3E"),
+                linear-gradient(135deg, rgba(20, 24, 44, 0.85), rgba(10, 11, 20, 0.95));
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(0, 242, 255, 0.05);
+    backdrop-filter: blur(20px);
+    overflow: hidden;
+}
+
+.menu-container::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle at center, rgba(0, 242, 255, 0.1) 0%, transparent 60%);
+    animation: menu-pulse 8s infinite alternate;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes menu-pulse {
+    0% { transform: scale(0.8); opacity: 0.5; }
+    100% { transform: scale(1.1); opacity: 1; }
+}
+
+.menu-logo-img {
+    max-width: 450px;
+    width: 100%;
+    height: auto;
+    margin: 0 auto 1rem auto;
+    display: block;
+    filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.4));
 }
 
 .game-title h1 {
@@ -1619,7 +1652,7 @@ body.lockout .unit-card.exhausted {
     font-weight: 800;
     border: 2px solid transparent;
     /* cursor removed */
-    transition: all 0.3s;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     text-transform: uppercase;
     letter-spacing: 2px;
     position: relative;
@@ -1644,24 +1677,31 @@ body.lockout .unit-card.exhausted {
 
 .menu-btn.primary {
     background: linear-gradient(135deg, var(--accent-primary), #00a2ff);
-    color: black;
-    border-color: var(--accent-primary);
+    color: #0a0b10;
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 4px 15px rgba(0, 242, 255, 0.3);
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.4);
 }
 
 .menu-btn.primary:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 0 40px rgba(0, 242, 255, 0.5);
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 10px 30px rgba(0, 242, 255, 0.6), inset 0 0 15px rgba(255, 255, 255, 0.5);
+    border-color: #fff;
 }
 
 .menu-btn.secondary {
-    background: var(--glass-bg);
-    color: white;
-    border-color: var(--glass-border);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+    color: var(--accent-primary);
+    border: 2px solid rgba(0, 242, 255, 0.2);
+    box-shadow: inset 0 0 10px rgba(0, 242, 255, 0.05);
 }
 
 .menu-btn.secondary:hover {
-    background: var(--glass-border);
-    border-color: var(--text-dim);
+    background: rgba(0, 242, 255, 0.1);
+    border-color: var(--accent-primary);
+    color: #fff;
+    box-shadow: 0 5px 20px rgba(0, 242, 255, 0.2), inset 0 0 15px rgba(0, 242, 255, 0.2);
+    transform: translateY(-2px);
 }
 
 .menu-btn.disabled {
@@ -1744,6 +1784,7 @@ body.lockout .unit-card.exhausted {
         opacity: 0.3;
     }
 }
+
 
 .room-code-display {
     text-align: center;

@@ -439,6 +439,8 @@ class PrismataWeb {
                 document.getElementById('room-code-text').textContent = code;
             } catch (e) {
                 console.error('Failed to create room:', e);
+                lobbyCreate.classList.add('hidden');
+                lobbyChoice.classList.remove('hidden');
             }
         };
 
@@ -1202,7 +1204,16 @@ class PrismataWeb {
             const interactiveUnit = interactiveIndex !== -1 ? unitsByType[type][interactiveIndex] : null;
             const rotationUnitNum = rotationIndex + 1;
 
-            unitsByType[type].forEach((unit, indexInType) => {
+            const sortedUnits = unitsByType[type].map((unit, index) => ({ unit, originalIndex: index }))
+                .sort((a, b) => {
+                    if (a.unit.exhausted && !b.unit.exhausted) return -1;
+                    if (!a.unit.exhausted && b.unit.exhausted) return 1;
+                    return a.originalIndex - b.originalIndex;
+                });
+
+            sortedUnits.forEach((item, domIndex) => {
+                const unit = item.unit;
+                const indexInType = item.originalIndex;
                 const card = document.createElement('div');
                 const isAttacking = unit.attacking;
                 const isBlocking = unit.blocking;
@@ -1210,7 +1221,7 @@ class PrismataWeb {
                 const unitNumber = indexInType + 1;
 
                 card.className = `unit-card ${isExhausted ? 'exhausted' : ''} ${isAttacking ? 'attacking' : ''} ${isBlocking ? 'blocking' : ''}`;
-                card.style.zIndex = indexInType;
+                card.style.zIndex = domIndex;
                 const imgUrl = this.unitImages[unit.type];
 
                 // Block overlay (Block Phase) - block value above shield, blue, only eligible units
@@ -1303,6 +1314,11 @@ class PrismataWeb {
                     if (canActInAction || canBlockInBlock) {
                         isInteractive = true;
                     }
+                }
+
+                // Allow clicking ANY unit that was used this turn to undo it!
+                if (isFriendly && this.state.phase === 'Action' && unit.usedThisTurn) {
+                    isInteractive = true;
                 }
 
                 // Breach clicking is handled by the column instead
