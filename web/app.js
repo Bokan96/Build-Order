@@ -1271,9 +1271,8 @@ class PrismataWeb {
         const container = document.getElementById('central-attack-container');
         const atkEl = document.getElementById('central-atk');
         if (!container || !atkEl) return;
+        // The meter itself is just the number + arrow; the label/breakdown only live in its tooltip
         atkEl.textContent = value;
-        document.getElementById('central-atk-label').textContent = label;
-        document.getElementById('central-atk-breakdown').textContent = breakdown;
         container.classList.remove('mode-idle', 'mode-attack', 'mode-incoming', 'mode-assign', 'toward-p1', 'toward-p2');
         container.classList.add(`mode-${mode}`);
         if (attackerIsP1 !== null) container.classList.add(attackerIsP1 ? 'toward-p2' : 'toward-p1');
@@ -1876,33 +1875,32 @@ class PrismataWeb {
         const s = this.state;
         if (!s || s.gameOver || this.isTutorial) return '';
         const combat = s.combat || { atk: 0, blk: 0, assigned: 0 };
-        const actorName = s.currentPlayer;
-        const prefix = this.gameMode === 'HOTSEAT' ? `${actorName}: ` : '';
 
+        // Just the tip, no player names
         if (!this._isMyTurn()) {
             if (this.gameMode === 'AI') {
                 if (s.phase === 'Block') return 'AI is choosing blockers…';
                 return this.aiThinking ? 'AI is thinking…' : 'AI is playing its turn…';
             }
-            if (s.phase === 'Breach') return `${actorName} is assigning damage…`;
-            if (s.phase === 'Block') return `${actorName} is choosing blockers…`;
-            return `Waiting for ${actorName}…`;
+            if (s.phase === 'Breach') return 'Opponent is assigning damage…';
+            if (s.phase === 'Block') return 'Opponent is choosing blockers…';
+            return 'Waiting for your opponent…';
         }
 
         if (s.phase === 'Block') {
             const me = this.isP1Turn() ? s.p1 : s.p2;
             const left = Math.max(0, combat.atk - combat.blk);
             const canBlock = me.units.some(u => u.isAlive && !u.exhausted && u.blk > 0 && !u.blocking);
-            if (left === 0) return `${prefix}Attack fully blocked. Press FINISH BLOCKING.`;
-            if (!canBlock) return `${prefix}Incoming ⚔️${left} and no blockers ready. Press FINISH BLOCKING.`;
-            return `${prefix}Incoming ⚔️${left}. Click units to block, then FINISH BLOCKING.`;
+            if (left === 0) return 'Attack fully blocked. Press FINISH BLOCKING.';
+            if (!canBlock) return `Incoming ⚔️${left} and no blockers ready. Press FINISH BLOCKING.`;
+            return `Incoming ⚔️${left}. Click units to block, then FINISH BLOCKING.`;
         }
         if (s.phase === 'Breach') {
             const left = Math.max(0, combat.atk - combat.blk - combat.assigned);
-            return `${prefix}Assign ${left}⚔️: click a glowing enemy unit, or ATTACK BASE.`;
+            return `Assign ${left}⚔️: click a glowing enemy unit, or ATTACK BASE.`;
         }
-        if (this._hasNothingToDo()) return `${prefix}Nothing left to do. Press END TURN.`;
-        return `${prefix}Tap units for 🔋/🪙, shop, then END TURN.`;
+        if (this._hasNothingToDo()) return 'Nothing left to do. Press END TURN.';
+        return 'Tap units for 🔋/🪙, shop, then END TURN.';
     }
 
     updateActionButtons() {
@@ -1955,14 +1953,14 @@ class PrismataWeb {
             this.elements.btnEnd.classList.remove('important');
         }
 
-        // Buys left this turn (the second purchase costs +1 energy), on the SHOP button
+        // Buys chip on SHOP, only when it matters: the next buy costs +1 energy, or both buys are used
         const chip = document.getElementById('buys-chip');
         if (chip) {
             const active = this.isP1Turn() ? this.state.p1 : this.state.p2;
             const left = Math.max(0, 2 - active.purchased);
             const shopOpen = !this.elements.shopModal.classList.contains('hidden');
-            const showChip = isMyTurn && phase === 'Action' && !this.state.gameOver && !shopOpen;
-            chip.textContent = left === 2 ? '2 left' : (left === 1 ? '1 left · +1🔋' : '0 left');
+            const showChip = isMyTurn && phase === 'Action' && !this.state.gameOver && !shopOpen && left < 2;
+            chip.textContent = left === 1 ? '+1🔋' : '0 left';
             chip.classList.toggle('hidden', !showChip);
             chip.classList.toggle('none-left', left === 0);
         }
