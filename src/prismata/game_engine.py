@@ -151,7 +151,7 @@ class GameEngine:
             success, msg = unit.repair(player)
             if success:
                 unit.used_this_turn = True
-                unit.action_log = {"type": "repair", "energy": 1}
+                unit.action_log = {"type": "repair", "energy": -1}
             return success, msg
         else:
             return False, f"{unit.name} has no usable ability"
@@ -174,50 +174,75 @@ class GameEngine:
             
         log = unit.action_log
         log_type = log.get("type")
-        
-        # Resource Check: Only check if undoING the action has a positive cost
-        # (e.g. if the action gave 1 Gold, undoing it costs 1 Gold)
-        gold_cost = log.get("gold", 0)
-        energy_cost = log.get("energy", 0)
-        
-        if gold_cost > 0 and player.gold < gold_cost:
-            return False, f"Not enough Gold to undo this action (needs {gold_cost})"
-        if energy_cost > 0 and player.energy < energy_cost:
-            return False, f"Not enough Energy to undo this action (needs {energy_cost})"
+        if log_type not in ("mine", "generate", "repair", "overcharge", "prepare_attack"):
+            return False, f"Unknown action type: {log_type}"
 
-        if log_type == "mine":
-            player.energy += abs(energy_cost) # Miner log: energy is -1, gold is 1
-            player.gold -= gold_cost
-        elif log_type == "generate":
-            player.energy -= energy_cost # Energizer log: energy is 1
-        elif log_type == "repair":
-            player.energy += abs(energy_cost) # Wall log: energy is -1
-            unit.exhausted = True # Re-exhaust after repair undo
-        elif log_type == "overcharge":
-            player.energy += abs(energy_cost) # Repeater log: energy is -1
+        # Logs store the resource delta the action applied (e.g. mine: energy -1, gold +1).
+        # Undoing subtracts that delta, so a positive delta must still be available to give back.
+        gold_delta = log.get("gold", 0)
+        energy_delta = log.get("energy", 0)
+
+        if gold_delta > 0 and player.gold < gold_delta:
+            return False, f"Not enough Gold to undo this action (needs {gold_delta})"
+        if energy_delta > 0 and player.energy < energy_delta:
+            return False, f"Not enough Energy to undo this action (needs {energy_delta})"
+
+        if log_type == "overcharge":
             target = log["target"]
-            target.exhausted = True # Re-exhaust the target
+            # Once the readied unit has been used again, the ready can't be taken back
+            if target.exhausted or target not in player.units:
+                return False, f"Can't undo: the readied {target.name} has already been used"
+
+        player.gold -= gold_delta
+        player.energy -= energy_delta
+
+        if log_type == "overcharge":
+            log["target"].exhausted = True  # Re-exhaust the target
         elif log_type == "prepare_attack":
-            player.energy += abs(energy_cost) # Strikers: 0, Wall: -1
             if unit in self.prepared_squad:
                 self.prepared_squad.remove(unit)
             player.displayed_attack = sum(u.attack for u in self.prepared_squad)
-        else:
-            return False, f"Unknown action type: {log_type}"
-            
-        unit.exhausted = False
+
+        # A repaired Wall goes back to exhausted; every other unit becomes ready again
+        unit.exhausted = (log_type == "repair")
         unit.used_this_turn = False
         unit.action_log = None
-        
-        if unit.name == "Volatile":
-            # Volatile is tricky because it takes 99 damage and is removed from list?
-            # No, if it was 'used', it's still alive in this turn until end_phase removes it.
-            # Wait, prepare_attackers for Volatile does: u.take_damage(99); player.remove_dead_units()
-            # If so, it's GONE and cannot be undone. User said 'cannot untap just bought units'.
-            # If it's dead, it's not even in the UI. 
-            pass
 
         return True, f"Undid {unit.name} action"
+
+    def prepare_unit_attack(self, unit_type, unit_number):
+        """
+        Prepare one specific unit (1-indexed within its type) to attack next turn.
+        A unit can only be in the prepared squad once, even if a Repeater readies it again.
+        """
+        if self.game.phase != "Action":
+            return False, "Can only prepare attackers during Action Phase"
+
+        player = self.game.current_player
+        units = player.get_units_by_type(unit_type)
+        if unit_number < 1 or unit_number > len(units):
+            return False, f"Invalid {unit_type} number"
+
+        unit = units[unit_number - 1]
+        if unit.attack <= 0:
+            return False, f"{unit.name} cannot attack"
+        if unit.exhausted or not unit.is_alive():
+            return False, "Unit is exhausted or dead"
+        if unit in self.prepared_squad:
+            return False, f"{unit.name} is already prepared to attack"
+        if player.energy < unit.attack_cost:
+            return False, "Not enough energy"
+
+        player.energy -= unit.attack_cost
+        unit.exhaust()
+        unit.used_this_turn = True
+        unit.action_log = {"type": "prepare_attack", "energy": -unit.attack_cost}
+        self.prepared_squad.append(unit)
+        if unit.name == "Volatile":
+            unit.take_damage(99)  # Self-destructs: removed now, its attack still counts
+            player.remove_dead_units()
+        player.displayed_attack = sum(u.attack for u in self.prepared_squad)
+        return True, f"Prepared {unit.name} for attack"
             
     def prepare_attackers(self, unit_list):
         """
@@ -233,8 +258,9 @@ class GameEngine:
         
         for unit_type, count in unit_list:
             units = player.get_units_by_type(unit_type)
-            ready_units = [u for u in units if not u.exhausted]
-            
+            # A unit readied again by a Repeater still only attacks once
+            ready_units = [u for u in units if not u.exhausted and u not in self.prepared_squad]
+
             if count == "all":
                 # How many can we afford/have ready?
                 if not ready_units:

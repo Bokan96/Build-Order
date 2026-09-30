@@ -128,7 +128,7 @@ Once combat resolution concludes, your main phase begins. You may perform these 
 
 ### 🚧 Barrier
 * **Cost:** 1 Gold
-* **Stats:** 0 ATK / 1 BLK / 1 HP
+* **Stats:** 0 ATK / 2 BLK / 1 HP
 * **Trait — Fragile:** If this unit participates in a Block, it is destroyed automatically at the end of the action.
 * *Ultra-cheap, disposable blocker to soak up hits.*
 

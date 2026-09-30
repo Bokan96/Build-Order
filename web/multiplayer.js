@@ -24,14 +24,22 @@ class MultiplayerManager {
         'ACE', 'CAT', 'DOG', 'FOX', 'KEY',
         'MAP', 'SUN', 'WAR', 'WIN', 'TOP',
         'FUN', 'RED', 'BOX', 'JET', 'CAP',
-        'RUN', 'PIG', 'BAT', 'CAR', 'HAT'
+        'RUN', 'PIG', 'BAT', 'CAR', 'HAT',
+        'ANT', 'ARM', 'ART', 'BEE', 'BUS',
+        'COW', 'CUP', 'DAY', 'EGG', 'ELF',
+        'FAN', 'FIG', 'GEM', 'GYM', 'HEN',
+        'ICE', 'INK', 'JAM', 'KIT', 'LOG',
+        'MUD', 'NET', 'OAK', 'OWL', 'PAN',
+        'PEN', 'POT', 'RAT', 'RAY', 'SEA',
+        'SKY', 'TEA', 'TOY', 'VAN', 'WEB',
+        'YAK', 'ZIP', 'ZOO', 'BUG', 'COD'
     ];
 
     /**
-     * Pick a random room code from the word list
+     * Pick a random room code from the word list, skipping any in `exclude`
      */
-    _generateCode() {
-        const codes = MultiplayerManager.ROOM_CODES;
+    _generateCode(exclude = new Set()) {
+        const codes = MultiplayerManager.ROOM_CODES.filter(c => !exclude.has(c));
         return codes[Math.floor(Math.random() * codes.length)];
     }
 
@@ -70,42 +78,71 @@ class MultiplayerManager {
     /**
      * Create a room (Host mode).
      * Returns a Promise that resolves with the room code once the peer is ready.
+     * If the chosen code is already taken, retries with a different one.
      */
-    createRoom() {
+    async createRoom(maxAttempts = 5) {
+        this.isHost = true;
+        this._emitState('connecting', 'Creating room...');
+        const tried = new Set();
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            this.roomCode = this._generateCode(tried);
+            tried.add(this.roomCode);
+            try {
+                await this._openHostPeer(this.roomCode);
+                return this.roomCode;
+            } catch (err) {
+                const taken = err && err.type === 'unavailable-id';
+                if (!taken || attempt === maxAttempts) {
+                    this._emitError(taken ? 'No free room code found. Try again.' : `Connection error: ${err && err.type}`);
+                    throw err;
+                }
+                console.warn(`[Multiplayer] Room code ${this.roomCode} is taken, retrying...`);
+            }
+        }
+    }
+
+    /**
+     * Register the host peer for a room code. Resolves once the signaling server accepts it.
+     */
+    _openHostPeer(code) {
         return new Promise((resolve, reject) => {
-            this.isHost = true;
-            this.roomCode = this._generateCode();
-
-            this._emitState('connecting', 'Creating room...');
-
-            this.peer = new Peer('bo-' + this.roomCode, {
+            const peer = new Peer('bo-' + code, {
                 debug: 1
             });
+            this.peer = peer;
+            let opened = false;
 
-            this.peer.on('open', (id) => {
+            peer.on('open', (id) => {
+                opened = true;
                 console.log('[Multiplayer] Room created:', id);
                 this._emitState('waiting', 'Waiting for opponent...');
-                resolve(this.roomCode);
+                resolve();
             });
 
-            this.peer.on('connection', (conn) => {
+            peer.on('connection', (conn) => {
+                if (this.conn) {
+                    // Room already has an opponent; refuse extra guests
+                    console.warn('[Multiplayer] Rejecting extra connection');
+                    conn.on('open', () => conn.close());
+                    return;
+                }
                 console.log('[Multiplayer] Opponent connected!');
                 this.conn = conn;
                 this._setupConnection(conn);
             });
 
-            this.peer.on('error', (err) => {
+            peer.on('error', (err) => {
                 console.error('[Multiplayer] Peer error:', err);
-                if (err.type === 'unavailable-id') {
-                    this._emitError('Room code already in use. Try again.');
-                    reject(new Error('Room code already in use'));
+                if (!opened) {
+                    peer.destroy();
+                    reject(err);
                 } else {
                     this._emitError(`Connection error: ${err.type}`);
-                    reject(err);
                 }
             });
 
-            this.peer.on('disconnected', () => {
+            peer.on('disconnected', () => {
                 console.log('[Multiplayer] Peer disconnected from signaling server');
             });
         });
@@ -218,19 +255,5 @@ class MultiplayerManager {
         this.roomCode = null;
         this.isHost = false;
         this._emitState('disconnected', 'Disconnected');
-    }
-}
-if (this.conn) {
-    this.conn.close();
-    this.conn = null;
-}
-if (this.peer) {
-    this.peer.destroy();
-    this.peer = null;
-}
-this.connected = false;
-this.roomCode = null;
-this.isHost = false;
-this._emitState('disconnected', 'Disconnected');
     }
 }

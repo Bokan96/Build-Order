@@ -82,7 +82,7 @@ class Miner(Unit):
 class Energizer(Unit):
     """
     Cost: 2 Gold
-    Stats: 0 ATK / 0 BLK / 3 HP
+    Stats: 0 ATK / 0 BLK / 2 HP
     Ability: Generate (Exhaust) -> Gain 1 Energy
     """
     
@@ -193,7 +193,7 @@ class Volatile(Unit):
 class Barrier(Unit):
     """
     Cost: 1 Gold
-    Stats: 0 ATK / 1 BLK / 1 HP
+    Stats: 0 ATK / 2 BLK / 1 HP
     """
     
     def __init__(self):

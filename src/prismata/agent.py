@@ -151,10 +151,11 @@ class Agent:
             exhausted_allies = [u for u in active_player.units if u.exhausted and u.is_alive()]
             for i, u in enumerate(repeaters):
                 if strat == "Aggressive" or __import__('random').random() < 0.5:
-                    if exhausted_allies:
+                    if exhausted_allies and sim_energy >= 1:
                         target = next((u2 for u2 in exhausted_allies if u2.name == "Striker"), exhausted_allies[0])
                         steps.append({'type': 'use_ability', 'unit': 'repeater', 'number': i + 1,
                                        'label': f'Repeater readies {target.name}'})
+                        sim_energy -= 1
 
         # --- Buying (up to 2 purchases, mirroring handle_action logic) ---
         purchases = 0
@@ -263,7 +264,7 @@ class Agent:
             eco = self.get_economic_target(active_player, "miner")
             if num_miners < 3 and can(eco): return eco
             if num_strikers < 3 and can("striker"): return "striker"
-        elif strat == "Tactical":
+        elif strat in ("Tactical", "Defensive"):
             if enemy_atk > my_block and num_walls < 3 and can("wall"): return "wall"
             if (num_miners < 4 or num_energizers < 3):
                 t = "miner" if num_miners <= num_energizers else "energizer"
@@ -850,8 +851,8 @@ class Agent:
                                 self.record_action(f"Bought {target_unit}")
                                 bought_this_step = True
             
-            elif strat == "Tactical":
-                # TACTICAL: Prioritize economy, then defensive walls, then counter-attack
+            elif strat in ("Tactical", "Defensive"):
+                # TACTICAL (also the web "Defensive" AI): Prioritize economy, then defensive walls, then counter-attack
                 num_miners = active_player.lifetime_units.get("miner", 0)
                 num_energizers = active_player.lifetime_units.get("energizer", 0)
                 num_walls = active_player.lifetime_units.get("wall", 0)

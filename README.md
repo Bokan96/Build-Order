@@ -55,14 +55,14 @@ When your opponent attacks, you (the defender) can:
 
 | Unit | Cost | Stats | Ability |
 |------|------|-------|---------|
-| **Barrier** | 1G | 0/1/1 | Cheap blocker |
-| **Miner** | 2G | 0/0/2 | Mine: 1E → 1G |
-| **Energizer** | 2G | 0/0/3 | Generate: Gain 1E |
+| **Barrier** | 1G | 0/2/1 | Fragile: destroyed after blocking |
+| **Miner** | 2G | 0/1/1 | Mine: 1E → 1G |
+| **Energizer** | 2G | 0/0/2 | Generate: Gain 1E |
 | **Striker** | 3G | 2/0/1 | Atk Cost: 1E |
 | **Guard** | 3G | 1/2/2 | Basic blocker |
-| **Overcharger** | 3G+1E | 1/1/3 | Ready another unit |
-| **Wall** | 3G | 0/2/0 | Structural defense |
-| **Volatile** | 4G+2E | 3/0/2 | Detonate: +3 ATK |
+| **Repeater** | 3G | 0/1/2 | Overcharge (1E): ready another unit |
+| **Wall** | 3G | 0/2/2 | Enters ready; Repair (1E) to ready again |
+| **Volatile** | 4G | 5/0/2 | Atk Cost: 1E; self-destructs when it attacks |
 
 *Stats format: ATK/BLK/HP*
 

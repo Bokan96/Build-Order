@@ -351,7 +351,7 @@ button,
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #0a093a url('assets/UI/central_atk_bg.png') no-repeat center !important;
+    background: #0a093a no-repeat center !important;
     background-size: contain !important;
     border: 2px solid var(--accent-red);
     box-shadow: 0 0 15px rgba(255, 62, 62, 0.4);
@@ -2272,8 +2272,10 @@ body.lockout .unit-card.exhausted {
 
     /* Unit Grid with internal scrolling */
     .unit-grid {
+        /* Card width scales down on narrow phones so three unit types fit per row */
+        --m-card-w: min(100px, 24vw);
         padding: 0.5rem;
-        gap: 1rem;
+        gap: 1rem calc(var(--m-card-w) * 0.2);
         overflow-y: auto;
         overflow-x: hidden;
         justify-content: center;
@@ -2282,19 +2284,19 @@ body.lockout .unit-card.exhausted {
     }
 
     .unit-column {
-        min-width: 120px;
-        padding: 10px;
+        min-width: var(--m-card-w);
+        padding: 10px 5px;
     }
 
-    /* Smaller Cards */
+    /* Smaller Cards (poker ratio 1:1.4) */
     .unit-card {
-        width: 120px;
-        height: 168px;
-        flex: 0 0 168px;
+        width: var(--m-card-w);
+        height: calc(var(--m-card-w) * 1.4);
+        flex: 0 0 calc(var(--m-card-w) * 1.4);
     }
 
     .unit-column .unit-card {
-        margin-top: -100px;
+        margin-top: calc(var(--m-card-w) * -0.84);
     }
 
     /* Compact Stats Bar */

@@ -3,6 +3,8 @@
  * Connects the Python game logic to the glassmorphism UI.
  */
 
+const UNIT_KEYS = ['miner', 'energizer', 'striker', 'guard', 'wall', 'repeater', 'volatile', 'barrier'];
+
 class PrismataWeb {
     constructor() {
         this.pyodide = null;
@@ -12,10 +14,13 @@ class PrismataWeb {
         this.isLoaded = false;
         this.selectedAI = null;
         this.gameMode = 'AI'; // 'AI', 'HOTSEAT', or 'ONLINE'
-        this.processingTurn = false;
+        this.processingTurn = false; // True while an end-turn (incl. AI turn) is being resolved
+        this.gameSession = 0; // Bumped on every new/abandoned game so stale async AI loops stop
+        this.endGameShown = false;
         this.hasInteracted = false;
-        this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" message
+        this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" banner
         this.isTutorial = false;
+        this.tutorialHold = false; // Suppresses tutorial updates while an end-turn is resolving
         this.tutorialStep = 0;
         this.lastTutorialStep = -1;
         this.lastTutorialSubState = "";
@@ -405,13 +410,16 @@ class PrismataWeb {
                 this.isHost = this.multiplayer.isHost;
                 this.selectedAI = null;
                 this.opponentName = null;
+                this.onlineGameReady = false;
 
                 // Immediately setup callbacks so we don't miss handshakes
                 this.setupMultiplayerCallbacks();
 
                 // Send own name
                 const inputNameEl = document.getElementById('player-name-input');
-                const myName = (inputNameEl && inputNameEl.value.trim() !== '') ? inputNameEl.value.trim() : 'Player';
+                // Same default setupGame uses for our own seat, so both peers show identical names
+                const defaultName = this.isHost ? 'Player 1' : 'Player 2';
+                const myName = (inputNameEl && inputNameEl.value.trim() !== '') ? inputNameEl.value.trim() : defaultName;
 
                 setTimeout(() => {
                     this.multiplayer.sendAction({ type: 'handshake', name: myName });
@@ -439,6 +447,8 @@ class PrismataWeb {
                 document.getElementById('room-code-text').textContent = code;
             } catch (e) {
                 console.error('Failed to create room:', e);
+                lobbyCreate.classList.add('hidden');
+                lobbyChoice.classList.remove('hidden');
             }
         };
 
@@ -492,8 +502,16 @@ class PrismataWeb {
 
     setupMultiplayerCallbacks() {
         this.multiplayer.onAction((action) => {
-            if (action.type === 'handshake') {
-                this.opponentName = action.name;
+            if (action && action.type === 'handshake') {
+                const name = String(action.name || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 12);
+                this.opponentName = name || null;
+                // Handshake arrived after the game was set up: rename the opponent in place
+                if (this.opponentName && this.onlineGameReady) {
+                    this._runPy(`(game.player2 if r_opp_is_p2 else game.player1).name = r_name`,
+                        { r_opp_is_p2: this.isHost, r_name: this.opponentName });
+                    this.syncState();
+                    this.updateUI();
+                }
                 return;
             }
             console.log('[Online] Received remote action:', action);
@@ -515,6 +533,7 @@ class PrismataWeb {
             btnDisconnectMenu.onclick = () => {
                 this.sounds.play('CLICK');
                 this.elements.disconnectModal.classList.add('hidden');
+                this._abandonGame();
                 this.multiplayer.disconnect();
                 this.elements.app.classList.add('hidden');
                 this.showWelcomeScreen();
@@ -523,97 +542,111 @@ class PrismataWeb {
         }
     }
 
+    // Run Python with JS values bound as globals, so untrusted data is never spliced into code
+    _runPy(code, vars = {}) {
+        for (const [name, value] of Object.entries(vars)) {
+            this.pyodide.globals.set(name, value);
+        }
+        return this.pyodide.runPython(code);
+    }
+
+    _isValidRemoteAction(a) {
+        if (!a || typeof a !== 'object' || typeof a.type !== 'string' || !this.state) return false;
+        // Only the side that is currently acting may send moves (the attacker during Breach)
+        const remoteIsP1 = !this.isHost;
+        if (this.isP1Turn() !== remoteIsP1) return false;
+
+        const isUnit = (t) => UNIT_KEYS.includes(t);
+        const isNum = (n) => Number.isInteger(n) && n >= 1 && n <= 10;
+        switch (a.type) {
+            case 'buy':
+            case 'block':
+                return isUnit(a.unitType);
+            case 'prepare':
+            case 'ability':
+            case 'undo':
+                return isUnit(a.unitType) && isNum(a.unitNumber);
+            case 'breach':
+                return isUnit(a.unitType) && isNum(a.unitNumber) && typeof a.isP1Target === 'boolean';
+            case 'repeaterTarget':
+                return isUnit(a.targetType) && isNum(a.targetNumber) && isNum(a.sourceNumber);
+            case 'endTurn':
+                return true;
+            default:
+                return false;
+        }
+    }
+
     receiveRemoteAction(action) {
+        if (!this._isValidRemoteAction(action)) {
+            console.warn('[Online] Ignoring invalid or out-of-turn remote action:', action);
+            return;
+        }
+
         this.isRemoteAction = true;
 
         try {
             switch (action.type) {
                 case 'buy':
                     // Call engine directly — bypasses shop UI guards
-                    this.pyodide.runPython(`engine.buy_unit("${action.unitType}")`);
+                    this._runPy(`engine.buy_unit(r_type)`, { r_type: action.unitType });
                     this.log(`Opponent bought ${action.unitType}`, 'opponent');
                     this.syncState();
                     this.updateUI();
                     break;
 
+                case 'prepare':
+                    this._runPy(`engine.prepare_unit_attack(r_type, r_num)`,
+                        { r_type: action.unitType, r_num: action.unitNumber });
+                    this.syncState();
+                    this.updateUI();
+                    break;
+
                 case 'ability':
-                    if (action.atk > 0 && action.unitType !== 'repeater') {
-                        // Attack preparation — call engine directly
-                        this.pyodide.runPython(`
-                            unit_type = "${action.unitType}"
-                            unit_idx = ${action.unitNumber} - 1
-                            units_of_type = game.current_player.get_units_by_type(unit_type)
-                            if unit_idx < len(units_of_type):
-                                target_unit = units_of_type[unit_idx]
-                                if not target_unit.exhausted and target_unit.is_alive():
-                                    if target_unit not in engine.prepared_squad:
-                                        if game.current_player.energy >= target_unit.attack_cost:
-                                            engine.prepared_squad.append(target_unit)
-                                            game.current_player.energy -= target_unit.attack_cost
-                                            target_unit.exhausted = True
-                                            if target_unit.name == "Volatile":
-                                                target_unit.take_damage(99)
-                                                game.current_player.remove_dead_units()
-                                            game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
-                        `);
-                    } else {
-                        // Resource units (miner, energizer, wall) or volatile
-                        this.pyodide.runPython(`engine.use_ability("${action.unitType}", ${action.unitNumber})`);
-                    }
+                    this._runPy(`engine.use_ability(r_type, r_num)`,
+                        { r_type: action.unitType, r_num: action.unitNumber });
+                    this.syncState();
+                    this.updateUI();
+                    break;
+
+                case 'undo':
+                    this._runPy(`engine.undo_action(r_type, r_num)`,
+                        { r_type: action.unitType, r_num: action.unitNumber });
                     this.syncState();
                     this.updateUI();
                     break;
 
                 case 'block':
-                    // Call engine directly
-                    this.pyodide.runPython(`engine.assign_blockers([("${action.unitType}", 1)])`);
+                    this._runPy(`engine.assign_blockers([(r_type, 1)])`, { r_type: action.unitType });
                     this.syncState();
                     this.updateUI();
                     break;
 
-                case 'breach': {
-                    // Call engine directly
-                    const isP1Target = action.isP1Target;
-                    this.pyodide.runPython(`
-                        target_type = "${action.unitType}"
-                        target_num = ${action.unitNumber}
-                        defender_is_p1 = ${isP1Target ? 'True' : 'False'}
-                        defender = game.player1 if defender_is_p1 else game.player2
-                        units = defender.get_units_by_type(target_type)
-                        if 1 <= target_num <= len(units):
-                            target_unit = units[target_num-1]
-                            hp_needed = target_unit.current_health
-                            engine.resolve_combat([(target_type, hp_needed)])
-                    `);
+                case 'breach':
+                    this._runPy(`
+                        defender = game.player1 if r_p1_target else game.player2
+                        units = defender.get_units_by_type(r_type)
+                        if 1 <= r_num <= len(units):
+                            engine.resolve_combat([(r_type, units[r_num - 1].current_health)])
+                    `, { r_type: action.unitType, r_num: action.unitNumber, r_p1_target: action.isP1Target });
+                    // The attacker sends 'endTurn' once all damage is assigned; don't end the breach here
                     this.syncState();
-
-                    // Check if breach is finished
-                    const combat = this.state.combat;
-                    const remaining = (combat.atk - combat.blk) - combat.assigned;
-                    if (remaining <= 0) {
-                        this.handleEndTurn();
-                    } else {
-                        this.updateUI();
-                    }
+                    this.updateUI();
                     break;
-                }
 
                 case 'endTurn':
                     this.handleEndTurn();
                     break;
 
                 case 'repeaterTarget':
-                    // Call engine directly with source and target
-                    this.pyodide.runPython(`
-                        target_unit = game.current_player.get_units_by_type("${action.targetType}")[int(${action.targetNumber})-1]
-                        engine.use_ability("repeater", ${action.sourceNumber}, target=target_unit)
-                    `);
+                    this._runPy(`
+                        targets = game.current_player.get_units_by_type(r_target_type)
+                        if 1 <= r_target_num <= len(targets):
+                            engine.use_ability("repeater", r_num, target=targets[r_target_num - 1])
+                    `, { r_target_type: action.targetType, r_target_num: action.targetNumber, r_num: action.sourceNumber });
                     this.syncState();
                     this.updateUI();
                     break;
-
-                default:
-                    console.warn('[Online] Unknown action type:', action.type);
             }
         } catch (e) {
             console.error('[Online] Error replaying remote action:', e);
@@ -800,24 +833,30 @@ class PrismataWeb {
 
         const aiType = this.selectedAI || 'Standard';
 
-        // Initialize GameState and GameEngine instances in Python
-        this.pyodide.runPython(`
+        // Stop any async work (AI turns, banners) that belongs to the previous game
+        this._abandonGame();
+        this.endGameShown = false;
+        this.onlineGameReady = this.gameMode === 'ONLINE';
+
+        // Initialize GameState and GameEngine instances in Python.
+        // Names come from user input / the remote peer, so they're passed as globals, never spliced into code.
+        this._runPy(`
             # Create a dummy logger for the AI
             class DummyLogger:
                 def write(self, msg):
                     pass
                 def flush(self):
                     pass
-            
-            game = GameState("${p1Name}", "${p2Name}")
+
+            game = GameState(r_p1_name, r_p2_name)
             game.setup_game()
             engine = GameEngine(game)
-            
+
             # Start the first turn properly
             engine.start_phase()
             engine.action_phase()
 
-            if "${this.isTutorial ? 'True' : 'False'}" == "True":
+            if r_is_tutorial:
                 # Tutorial starting conditions: 2HP each, 6 Gold, 0 Energy, empty board
                 game.player1.base_health = 2
                 game.player2.base_health = 2
@@ -830,8 +869,8 @@ class PrismataWeb {
             
             # Only create AI agent if not in HOTSEAT mode
             ai = None
-            if "${this.gameMode}" != "HOTSEAT":
-                ai = Agent("${aiType}", logger=DummyLogger(), interactive=False)
+            if r_game_mode != "HOTSEAT":
+                ai = Agent(r_ai_type, logger=DummyLogger(), interactive=False)
             
             # Helper to get state as dict for JS
             def get_ui_bundle():
@@ -872,17 +911,26 @@ class PrismataWeb {
                     "phase": game.phase,
                     "turn": game.turn_number,
                     "currentPlayer": game.current_player.name,
+                    # Turn ownership by seat, not name (both players may pick the same name)
+                    "currentIsP1": game.current_player is game.player1,
                     "p1": serialize_player(game.player1),
                     "p2": serialize_player(game.player2),
                     "gameOver": game.game_over,
                     "winner": game.winner.name if game.winner else None,
+                    "winnerIsP1": game.winner is game.player1,
                     "combat": {
                         "atk": sum(u.attack for u in engine.attacking_units),
                         "blk": sum(u.block for u in engine.blocking_units),
                         "assigned": engine.assigned_damage
                     }
                 }
-        `);
+        `, {
+            r_p1_name: p1Name,
+            r_p2_name: p2Name,
+            r_is_tutorial: this.isTutorial,
+            r_game_mode: this.gameMode,
+            r_ai_type: aiType
+        });
 
         this.syncState();
     }
@@ -895,16 +943,59 @@ class PrismataWeb {
         // Hotfix: For Breach phase, UI should treat Attacker as active player
         // This ensures proper interaction targeting (Attacker clicks Defender units)
         if (this.state.phase === 'Breach') {
-            const defender = this.state.currentPlayer;
-            this.state.currentPlayer = defender === this.state.p1.name ? this.state.p2.name : this.state.p1.name;
+            this.state.currentIsP1 = !this.state.currentIsP1;
+            this.state.currentPlayer = this.state.currentIsP1 ? this.state.p1.name : this.state.p2.name;
         }
+    }
+
+    // True when Player 1's seat is the active one (the attacker during Breach)
+    isP1Turn() {
+        return !!(this.state && this.state.currentIsP1);
+    }
+
+    // Invalidate the running game's async work (AI loops) and clear its input locks
+    _abandonGame() {
+        this.gameSession++;
+        this.processingTurn = false;
+        this.isTurnTransitioning = false;
+        this.tutorialHold = false;
+        document.body.classList.remove('lockout');
+        if (this.targeting) {
+            this.targeting = null;
+            const cancelBtn = document.getElementById('btn-cancel-target');
+            if (cancelBtn) cancelBtn.remove();
+        }
+    }
+
+    // Release the end-turn lock, unless a newer game has taken over since `session` started
+    _endProcessing(session) {
+        if (session !== this.gameSession) return;
+        this.processingTurn = false;
+        if (!this.isTurnTransitioning) {
+            document.body.classList.remove('lockout');
+            // No banner is pending to release the tutorial hold (the turn didn't change hands)
+            if (this.tutorialHold) {
+                this.tutorialHold = false;
+                if (this.isTutorial && this.state) {
+                    this.updateTutorialUI();
+                    this.applyTutorialHighlights();
+                }
+            }
+        }
+        if (this.state) this.updateActionButtons();
+    }
+
+    // Sleep, then report whether the game that started this wait is still the active one
+    async _waitSession(ms, session) {
+        if (ms > 0) await new Promise(resolve => setTimeout(resolve, ms));
+        return session === this.gameSession;
     }
 
     updateUI() {
         if (!this.state) return;
 
-        if (this.state.gameOver) {
-            this.state.gameOver = false; // Prevent logic loop or manage appropriately
+        if (this.state.gameOver && !this.endGameShown) {
+            this.endGameShown = true; // Show the modal (and play the sound) only once
             this.showEndGameScreen();
         }
 
@@ -925,7 +1016,7 @@ class PrismataWeb {
         document.getElementById('player-name-display').textContent = this.state.currentPlayer.toUpperCase();
 
         // Update Tab Title
-        const playerShort = this.state.currentPlayer === this.state.p1.name ? 'P1' : (this.state.currentPlayer === this.state.p2.name ? 'P2' : this.state.currentPlayer);
+        const playerShort = this.isP1Turn() ? 'P1' : 'P2';
         const phaseEmojis = {
             'Start': '🏁',
             'Action': '🧭',
@@ -937,10 +1028,11 @@ class PrismataWeb {
         const emoji = phaseEmojis[this.state.phase] || (this.state.gameOver ? '🏆' : '🎮');
         document.title = `Build Order | ${playerShort} ${this.state.phase} ${emoji}`;
 
-        // Trigger Turn Transition Banner
-        if (this.currentTurnPlayer !== this.state.currentPlayer) {
+        // Trigger Turn Transition Banner (keyed by seat so identical names still switch)
+        const turnKey = this.isP1Turn() ? 'p1' : 'p2';
+        if (this.currentTurnPlayer !== turnKey) {
             const oldPlayer = this.currentTurnPlayer;
-            this.currentTurnPlayer = this.state.currentPlayer;
+            this.currentTurnPlayer = turnKey;
 
             const triggerBanner = () => {
                 const banner = document.getElementById('turn-banner');
@@ -959,13 +1051,16 @@ class PrismataWeb {
                     setTimeout(() => {
                         newBanner.classList.add('hidden');
                         this.isTurnTransitioning = false; // Unlock interaction
-                        document.body.classList.remove('lockout'); // Visual unlock
+                        // Visual unlock, unless a turn (e.g. the AI's) is still being resolved
+                        if (!this.processingTurn) document.body.classList.remove('lockout');
 
                         // RE-UPDATE BUTTONS: Ensure buttons return to 1.0 opacity after transition ends
                         this.updateActionButtons();
 
                         if (this.isTutorial) {
+                            this.tutorialHold = false; // The new turn is on screen; tutorial may update again
                             this.updateTutorialUI();
+                            this.applyTutorialHighlights();
                         }
                     }, 2000); // 2s is the duration of bannerIn animation
                 }
@@ -987,9 +1082,7 @@ class PrismataWeb {
         // Render Units
         // In AI mode, P1 is always friendly, P2 is AI.
         // In HOTSEAT mode, 'isFriendly' depends on who is the 'currentPlayer' in the state.
-        const p1Name = this.state.p1.name;
-        const p2Name = this.state.p2.name;
-        const isP1Turn = this.state.currentPlayer === p1Name;
+        const isP1Turn = this.isP1Turn();
 
         // In AI mode, P2 (AI) is never 'friendly' (interactable) for the user
         const isHotseat = this.gameMode === 'HOTSEAT';
@@ -1018,6 +1111,12 @@ class PrismataWeb {
 
         // Update Buttons
         this.updateActionButtons();
+
+        // Tutorial last: renderUnits rebuilds the unit columns, which would drop any highlight applied earlier
+        if (this.isTutorial) {
+            this.updateTutorialUI();
+            this.applyTutorialHighlights();
+        }
     }
 
     updatePlayerStats(player, data) {
@@ -1032,7 +1131,7 @@ class PrismataWeb {
         // Add glow to active player's stats bar
         const statsBar = document.querySelector(`#${player === 'p1' ? 'player-area' : 'opponent-area'} .player-stats-bar`);
         if (statsBar) {
-            if (this.state.currentPlayer === data.name) {
+            if ((player === 'p1') === this.isP1Turn()) {
                 statsBar.classList.add('active-player');
             } else {
                 statsBar.classList.remove('active-player');
@@ -1043,11 +1142,6 @@ class PrismataWeb {
         this.updateResourceDisplay(`${player}-gold`, data.gold);
         this.updateResourceDisplay(`${player}-energy`, data.energy);
         this.updateResourceDisplay(`${player}-hp`, data.hp, true);
-
-        // Update tutorial at the very end of UI cycle
-        if (this.isTutorial) {
-            this.updateTutorialUI();
-        }
     }
 
     updateCentralAttack() {
@@ -1420,14 +1514,10 @@ class PrismataWeb {
             isMyTurn = true;
         } else if (this.gameMode === 'ONLINE') {
             // In Online mode, check if it's the local player's turn
-            if (this.isHost) {
-                isMyTurn = this.state.currentPlayer === this.state.p1.name;
-            } else {
-                isMyTurn = this.state.currentPlayer === this.state.p2.name;
-            }
+            isMyTurn = this.isHost ? this.isP1Turn() : !this.isP1Turn();
         } else {
             // In AI Mode, only Player 1 is human
-            isMyTurn = this.state.currentPlayer === this.state.p1.name;
+            isMyTurn = this.isP1Turn();
         }
 
         // Special case for Breach: Attacker acts, which might be P1 even if defender is current?
@@ -1436,14 +1526,15 @@ class PrismataWeb {
         const canAct = isMyTurn || (this.gameMode !== 'HOTSEAT' && this.gameMode !== 'ONLINE' && phase === 'Breach' && this.state.p1.units.some(u => u.attacking));
         // Logic simplification: In Hotseat, canAct is always true effectively
 
-        this.elements.btnEnd.disabled = !canAct || this.isTurnTransitioning;
-        this.elements.btnBuy.disabled = !isMyTurn || phase === 'Block' || phase === 'Breach' || this.isTurnTransitioning;
+        const locked = this.isTurnTransitioning || this.processingTurn || this.state.gameOver;
+        this.elements.btnEnd.disabled = !canAct || locked;
+        this.elements.btnBuy.disabled = !isMyTurn || phase === 'Block' || phase === 'Breach' || locked;
 
         // Hide buttons completely when cannot act
         if (!canAct) {
             this.elements.btnEnd.style.opacity = '0.3';
             this.elements.btnBuy.style.opacity = '0.3';
-        } else if (this.isTurnTransitioning) {
+        } else if (locked) {
             // Intermediate state during transition
             this.elements.btnEnd.style.opacity = '0.3';
             this.elements.btnBuy.style.opacity = '0.3';
@@ -1477,7 +1568,7 @@ class PrismataWeb {
 
     async handleUnitClick(unit, unitNumber, columnElement) {
         try {
-            if (this.isTurnTransitioning) return;
+            if (this.isTurnTransitioning || this.processingTurn || this.state.gameOver) return;
             console.log("handleUnitClick", unit.type, unitNumber);
             if (this.targeting) {
                 // If we're in targeting mode, ignore clicks that come through the normal path
@@ -1487,7 +1578,7 @@ class PrismataWeb {
 
             // Action context
             const isP1Card = this.elements.p1Units.contains(columnElement);
-            const isP1Turn = this.state.currentPlayer === this.state.p1.name;
+            const isP1Turn = this.isP1Turn();
             const isFriendly = (isP1Card && isP1Turn) || (!isP1Card && !isP1Turn);
 
             const canAct = this.state.phase === 'Action' && isFriendly;
@@ -1499,16 +1590,19 @@ class PrismataWeb {
             // UNDO LOGIC: If unit is exhausted but was used this turn, undo it
             if (unit.exhausted && unit.usedThisTurn) {
                 console.log("Undoing action for", unit.type, unitNumber);
-                const resultProxy = this.pyodide.runPython(`
-                    success, msg = engine.undo_action("${unit.type}", ${unitNumber})
+                const resultProxy = this._runPy(`
+                    success, msg = engine.undo_action(r_type, r_num)
                     {"success": success, "msg": msg}
-                `);
+                `, { r_type: unit.type, r_num: unitNumber });
                 const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
                 resultProxy.destroy();
 
                 if (result.success) {
                     this.sounds.play('CLICK');
                     this.log(`Undid ${unit.name} action.`, 'system');
+                    if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                        this.multiplayer.sendAction({ type: 'undo', unitType: unit.type, unitNumber });
+                    }
                     this.syncState();
                     this.updateUI();
                 } else {
@@ -1527,41 +1621,11 @@ class PrismataWeb {
             }
             // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
             if (unit.atk > 0 && unit.type !== 'repeater') {
-                // Prepare this specific unit for attack
-                const resultProxy = this.pyodide.runPython(`
-                    # Find the actual unit object
-                    unit_type = "${unit.type}"
-                    unit_idx = ${unitNumber} - 1  # Convert to 0-based index
-                    units_of_type = game.current_player.get_units_by_type(unit_type)
-                    
-                    if unit_idx < len(units_of_type):
-                        target_unit = units_of_type[unit_idx]
-                        if not target_unit.exhausted and target_unit.is_alive():
-                            # Add to prepared squad (to attack next turn)
-                            if game.current_player.energy >= target_unit.attack_cost:
-                                engine.prepared_squad.append(target_unit)
-                                game.current_player.energy -= target_unit.attack_cost
-                                target_unit.exhausted = True
-                                target_unit.used_this_turn = True
-                                target_unit.action_log = {"type": "prepare_attack", "energy": target_unit.attack_cost}
-                                if target_unit.name == "Volatile":
-                                    target_unit.take_damage(99)
-                                    game.current_player.remove_dead_units()
-                                game.current_player.displayed_attack = sum(u.attack for u in engine.prepared_squad)
-                                success = True
-                                msg = f"Prepared {target_unit.name} for attack"
-                            else:
-                                success = False
-                                msg = "Not enough energy"
-                        else:
-                            success = False
-                            msg = "Unit is exhausted or dead"
-                    else:
-                        success = False
-                        msg = f"Invalid ${unit.type} number"
-                    
+                // Prepare this specific unit for attack (same engine call the remote peer replays)
+                const resultProxy = this._runPy(`
+                    success, msg = engine.prepare_unit_attack(r_type, r_num)
                     {"success": success, "msg": msg}
-                `);
+                `, { r_type: unit.type, r_num: unitNumber });
                 const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
                 resultProxy.destroy();
 
@@ -1574,7 +1638,7 @@ class PrismataWeb {
 
                     // Send to remote player
                     if (this.gameMode === 'ONLINE' && !this.isRemoteAction) {
-                        this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
+                        this.multiplayer.sendAction({ type: 'prepare', unitType: unit.type, unitNumber });
                     }
 
                     if (unit.type === 'volatile' && animateCard) {
@@ -1606,10 +1670,10 @@ class PrismataWeb {
 
             // Resource generation units (miner, energizer, wall)
             if (unit.type === 'miner' || unit.type === 'energizer' || unit.type === 'wall') {
-                const resultProxy = this.pyodide.runPython(`
-                    success, msg = engine.use_ability("${unit.type}", ${unitNumber})
+                const resultProxy = this._runPy(`
+                    success, msg = engine.use_ability(r_type, r_num)
                     {"success": success, "msg": msg}
-                `);
+                `, { r_type: unit.type, r_num: unitNumber });
                 const abilitySuccess = await this.processActionResult(resultProxy, animateCard);
 
                 if (abilitySuccess) {
@@ -1621,16 +1685,15 @@ class PrismataWeb {
 
                 // Send to remote player
                 if (abilitySuccess && this.gameMode === 'ONLINE' && !this.isRemoteAction) {
-                    this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
+                    this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber });
                 }
             } else if (unit.type === 'repeater') {
                 // Check energy from Python state directly to avoid desync
-                const currentPlayerName = this.state.currentPlayer;
                 const pyEnergy = this.pyodide.runPython(`game.current_player.energy`);
                 if (pyEnergy < 1) {
                     this.log("Not enough energy to use Repeater (needs 1🔋)", "important");
                     this.sounds.play('ERROR');
-                    const energyEl = document.getElementById(currentPlayerName === this.state.p1.name ? 'p1-energy' : 'p2-energy');
+                    const energyEl = document.getElementById(isP1Turn ? 'p1-energy' : 'p2-energy');
                     if (energyEl && energyEl.parentElement) {
                         energyEl.parentElement.classList.add('error-bump');
                         setTimeout(() => energyEl.parentElement.classList.remove('error-bump'), 600);
@@ -1645,33 +1708,6 @@ class PrismataWeb {
                 } else {
                     this.startTargeting(unit, unitNumber, animateCard);
                 }
-            } else if (unit.type === 'volatile') {
-                // Detonate volatile
-                const resultProxy = this.pyodide.runPython(`
-                    success, msg = engine.use_ability("${unit.type}", ${unitNumber})
-                    {"success": success, "msg": msg}
-                `);
-
-                if (animateCard) {
-                    animateCard.classList.add('unit-destroy');
-                    this.sounds.play('DESTROY');
-                }
-
-                const volSuccess = await this.processActionResult(resultProxy, animateCard);
-
-                // Send to remote player
-                if (volSuccess && this.gameMode === 'ONLINE' && !this.isRemoteAction) {
-                    this.multiplayer.sendAction({ type: 'ability', unitType: unit.type, unitNumber, atk: unit.atk, unitName: unit.name });
-                }
-
-                // If success, we already triggered destroy animation. Delay sync if needed.
-                if (volSuccess) {
-                    setTimeout(() => {
-                        this.syncState();
-                        this.updateUI();
-                    }, 600);
-                    return;
-                }
             }
         } catch (e) {
             console.error("handleUnitClick error", e);
@@ -1681,7 +1717,6 @@ class PrismataWeb {
 
     startTargeting(sourceUnit, sourceNumber, animateCard) {
         this.targeting = { sourceUnit, sourceNumber, animateCard };
-        const currentPlayerName = this.state.currentPlayer;
         this.log(`Click a friendly unit to unexhaust with Repeater #${sourceNumber}. Click Repeater again to cancel.`, 'system');
 
         if (animateCard) {
@@ -1690,7 +1725,7 @@ class PrismataWeb {
             animateCard.style.transition = 'transform 0.2s';
         }
 
-        const friendlyArea = currentPlayerName === this.state.p1.name ? this.elements.p1Units : this.elements.p2Units;
+        const friendlyArea = this.isP1Turn() ? this.elements.p1Units : this.elements.p2Units;
         friendlyArea.classList.add('targeting-mode');
         const columns = friendlyArea.querySelectorAll('.unit-column');
 
@@ -1704,7 +1739,7 @@ class PrismataWeb {
             // Find first exhausted card in this column (the target we'll unexhaust)
             const firstExhausted = cards.find(c => c.classList.contains('exhausted'));
             const hasExhausted = !!firstExhausted;
-            const firstExhaustedNum = firstExhausted ? firstExhausted.dataset.unitNumber : null;
+            const firstExhaustedNum = firstExhausted ? parseInt(firstExhausted.dataset.unitNumber, 10) : null;
 
             // Style each card using outline+filter to avoid fighting CSS !important on box-shadow/border
             cards.forEach((cardEl) => {
@@ -1791,18 +1826,13 @@ class PrismataWeb {
     executeTargetedAbility(targetType, targetNumber) {
         if (!this.targeting) return;
         const { sourceUnit, sourceNumber, animateCard } = this.targeting;
-        const processProxy = this.pyodide.runPython(`
-            source_type = "${sourceUnit.type}"
-            source_num = ${sourceNumber}
-            target_type = "${targetType}"
-            target_idx = ${targetNumber}
-            
+        const processProxy = this._runPy(`
             # Find the actual unit object in python
-            target_unit = game.current_player.get_units_by_type(target_type)[int(target_idx)-1]
-            success, msg = engine.use_ability(source_type, source_num, target=target_unit)
-            
+            target_unit = game.current_player.get_units_by_type(r_target_type)[r_target_num - 1]
+            success, msg = engine.use_ability(r_type, r_num, target=target_unit)
+
             {"success": success, "msg": msg}
-        `);
+        `, { r_type: sourceUnit.type, r_num: sourceNumber, r_target_type: targetType, r_target_num: targetNumber });
 
         const result = processProxy.toJs({ dict_converter: Object.fromEntries });
         processProxy.destroy();
@@ -1838,8 +1868,8 @@ class PrismataWeb {
     }
 
     handleBlock(unit) {
-        if (this.isTurnTransitioning) return;
-        const result = this.pyodide.runPython(`engine.assign_blockers([("${unit.type}", 1)])`);
+        if (this.isTurnTransitioning || this.processingTurn || this.state.gameOver) return;
+        this._runPy(`engine.assign_blockers([(r_type, 1)])`, { r_type: unit.type });
         this.sounds.play('BLOCK');
 
         // Send to remote player
@@ -1853,7 +1883,7 @@ class PrismataWeb {
             this.sounds.play('DESTROY');
 
             // Find the barrier column and play destroy animation
-            const area = this.state.currentPlayer === this.state.p1.name ? this.elements.p1Units : this.elements.p2Units;
+            const area = this.isP1Turn() ? this.elements.p1Units : this.elements.p2Units;
             const columns = area.querySelectorAll('.unit-column');
             for (const col of columns) {
                 const card = col.querySelector('[data-type="barrier"]');
@@ -1880,7 +1910,7 @@ class PrismataWeb {
     }
 
     handleAssignDamage(unit, unitNumber, isP1Target, column) {
-        if (this.isTurnTransitioning) return;
+        if (this.isTurnTransitioning || this.processingTurn || this.state.gameOver) return;
         // Calculate remaining in JS to avoid engine state issues
         const combat = this.state.combat;
         const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
@@ -1976,18 +2006,20 @@ class PrismataWeb {
     async handleEndTurn() {
         console.log("handleEndTurn called - Current Player:", this.state?.currentPlayer, "Phase:", this.state?.phase, "GameMode:", this.gameMode);
 
-        if (this.isTurnTransitioning) return;
-        this.isTurnTransitioning = true; // Block spam clicking
+        if (!this.state || this.state.gameOver) return;
+        // Local clicks are ignored during the turn banner or while a turn is resolving.
+        // A remote player's end-turn must never be dropped, or the two games drift apart.
+        if (!this.isRemoteAction && (this.isTurnTransitioning || this.processingTurn)) return;
+
+        const session = this.gameSession;
+        this.processingTurn = true; // Block spam clicking; released in finally
+        this.tutorialHold = this.isTutorial; // Don't show the next step's text until its turn is on screen
         document.body.classList.add('lockout'); // Visual lockout
 
         // Cancel targeting if active
         if (this.targeting) {
             this.cancelTargeting();
         }
-
-        // Prevent double-clicking
-        if (this.processingTurn) return;
-        this.processingTurn = true;
 
         if (this.isTutorial) {
             if (this.tutorialStep === 6) this.advanceTutorial();
@@ -2007,9 +2039,6 @@ class PrismataWeb {
 
         try {
             if (this.state.phase === 'Block') {
-                const defenderName = this.state.currentPlayer;
-                const attackerName = defenderName === this.state.p1.name ? this.state.p2.name : this.state.p1.name;
-
                 // Defender finished blocking - check for breach using engine
                 const resProxy = this.pyodide.runPython(`
                     success, msg = engine.finish_blocking()
@@ -2018,57 +2047,38 @@ class PrismataWeb {
                 const res = resProxy.toJs({ dict_converter: Object.fromEntries });
                 resProxy.destroy();
 
-
                 if (res.game_phase === 'Breach') {
-                    // Attacker must assign breach damage
-
-                    // In HOTSEAT or ONLINE mode, let human attacker assign
-                    if (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') {
+                    // The defender is the current player here, so in AI mode a P1 defender means the AI attacked
+                    const aiIsAttacker = this.gameMode === 'AI' && this.isP1Turn();
+                    if (!aiIsAttacker) {
+                        // Human attacker (HOTSEAT/ONLINE, or P1 attacking the AI) clicks units to assign damage
                         this.log("BREACH! Click enemy units to assign damage.", "important");
                         this.syncState();
                         this.updateUI();
-                        this.processingTurn = false;
-                        this.elements.btnEnd.disabled = false;
-                        this.elements.btnBuy.disabled = false;
                         return;
                     }
 
-                    // AI mode logic
-                    if (this.state.currentPlayer === this.state.p1.name) {
-                        // AI attacked, P1 defended, now AI (Attacker) assigns
-                        this.log("AI is assigning damage...", "system");
-                        const aiResProxy = this.pyodide.runPython(`
-                            assignments = ai.assign_damage(game, engine, sum(u.attack for u in engine.attacking_units) - sum(u.block for u in engine.blocking_units))
-                            success, msg = engine.resolve_combat(assignments)
-                            engine.end_phase()
-                            msg
-                        `);
-                        this.log(`AI Result: ${aiResProxy.toString()}`, "opponent");
-                        this.pyodide.runPython(`engine.action_phase()`);
-                    } else {
-                        // Player 1 attacked, AI defended, now Player 1 (Attacker) assigns
-                        this.log("BREACH! Click enemy units to assign damage.", "important");
-                        this.syncState();
-                        this.updateUI();
-                        this.processingTurn = false;
-                        this.elements.btnEnd.disabled = false;
-                        this.elements.btnBuy.disabled = false;
-                        return;
-                    }
+                    // AI attacked, P1 defended, now AI (Attacker) assigns
+                    this.log("AI is assigning damage...", "system");
+                    const aiResult = this.pyodide.runPython(`
+                        assignments = ai.assign_damage(game, engine, sum(u.attack for u in engine.attacking_units) - sum(u.block for u in engine.blocking_units))
+                        success, msg = engine.resolve_combat(assignments)
+                        engine.end_phase()
+                        msg
+                    `);
+                    this.log(`AI Result: ${aiResult}`, "opponent");
+                    this.pyodide.runPython(`engine.action_phase()`);
                 } else {
                     this.log(res.msg, "system");
                 }
 
                 this.syncState();
                 this.updateUI();
-                this.processingTurn = false;
-                this.elements.btnEnd.disabled = false;
-                this.elements.btnBuy.disabled = false;
 
             } else if (this.state.phase === 'Breach') {
                 // Attacker finished assigning damage - auto-assign leftover to base
                 this.log("Finishing damage assignment...", "system");
-                const resProxy = this.pyodide.runPython(`
+                const msg = this.pyodide.runPython(`
                     # Auto-assign remaining to base
                     total_atk = sum(u.attack for u in engine.attacking_units)
                     total_blk = sum(u.block for u in engine.blocking_units)
@@ -2077,17 +2087,16 @@ class PrismataWeb {
                     if remaining > 0:
                         success, msg = engine.resolve_combat([("base", remaining)])
                         results.append(msg)
-                    
-                    # Log all dead units from the attacker's turn
-                    dead_p2 = [u.name for u in game.player2.units if not u.is_alive()]
-                    if dead_p2:
-                        results.append(f"Units destroyed: {', '.join(dead_p2)}")
-                        
+
+                    # Log the defender's units destroyed in this breach (current_player is the defender)
+                    dead_units = [u.name for u in game.current_player.units if not u.is_alive()]
+                    if dead_units:
+                        results.append(f"Units destroyed: {', '.join(dead_units)}")
+
                     engine.end_phase()
                     engine.action_phase()
                     " ; ".join(results) if results else "Breach finished"
                 `);
-                const msg = resProxy.toString();
                 if (this.isTutorial && this.tutorialStep === 13) {
                     this.advanceTutorial();
                 }
@@ -2095,15 +2104,13 @@ class PrismataWeb {
 
                 this.syncState();
                 this.updateUI();
+                if (this.state.gameOver) return;
 
                 // Proceed with next player's Action phase
-                this.processingTurn = false;
-
-                // Only run AI action phase if in AI mode
+                this.sounds.play('TURN_START');
                 if (this.gameMode === 'AI') {
-                    setTimeout(() => this.runAIActionPhase(), 100);
+                    await this._runAIActionTurn(session);
                 } else {
-                    this.sounds.play('TURN_START');
                     this.log(`${this.state.currentPlayer}'s turn!`, "system");
                     this.updateUI();
                 }
@@ -2116,7 +2123,7 @@ class PrismataWeb {
                     engine.end_phase()
                     engine.end_turn()
                     engine.start_phase()
-                    
+
                     # Enter Block phase if needed
                     engine.block_phase()
                 `);
@@ -2128,8 +2135,7 @@ class PrismataWeb {
                 if (this.gameMode === 'HOTSEAT' || this.gameMode === 'ONLINE') {
                     if (this.state.phase === 'Block') {
                         // Opponent needs to defend (human player)
-                        const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
-                        const incomingAtk = incomingAtkProxy;
+                        const incomingAtk = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
                         this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage. ${this.state.currentPlayer}, assign your blockers!`, "important");
                     } else {
                         // No attack, just Action phase
@@ -2142,98 +2148,18 @@ class PrismataWeb {
                         this.log(`${this.state.currentPlayer}'s turn!`, "system");
                     }
                     this.updateUI();
-                    this.processingTurn = false;
-                    this.elements.btnEnd.disabled = false;
-                    this.elements.btnBuy.disabled = false;
                     return;
                 }
 
                 // ===== AI MODE =====
                 if (this.state.phase === 'Block') {
                     // Player attacked - AI needs to defend
-                    const incomingAtkProxy = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
-                    const incomingAtk = incomingAtkProxy;
+                    const incomingAtk = this.pyodide.runPython(`sum(u.attack for u in engine.attacking_units)`);
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
-                    await new Promise(resolve => setTimeout(resolve, 800));
 
                     // Wait for banner + extra buffer
-                    await new Promise(resolve => setTimeout(resolve, 4000));
-
-                    const speedMap = { '0': 3500, '1': 2000, '2': 0 };
-                    const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
-
-                    if (stepDelayMs > 0) {
-                        const stepsProxy = this.pyodide.runPython(`
-                            global_def_steps_py = ai.plan_defense(game, engine)
-                            global_def_steps_py
-                        `);
-                        const numSteps = stepsProxy.length;
-
-                        // We gather the summary while replaying the visual steps
-                        let blockSummary = [];
-
-                        for (let i = 0; i < numSteps; i++) {
-                            const step = stepsProxy.get(i);
-                            if (step.get('type') === 'end') {
-                                step.destroy();
-                                break;
-                            }
-
-                            const stepData = step.toJs({ dict_converter: Object.fromEntries });
-                            const isBarrierBlock = stepData.type === 'block' && stepData.unit === 'barrier';
-
-                            if (isBarrierBlock) {
-                                // Find the barrier card to animate before it's removed by syncState
-                                const area = this.elements.p2Units; // AI is always P2 in PVE
-                                const barrierCard = area.querySelector('[data-type="barrier"]:not(.exhausted)');
-                                if (barrierCard) {
-                                    barrierCard.classList.add('unit-destroy');
-                                    this.sounds.play('DESTROY');
-                                }
-                            }
-
-                            const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_def_steps_py[${i}])`);
-                            this.log(`🤖 AI: ${label}`, 'opponent');
-                            this.sounds.play('BLOCK');
-                            blockSummary.push(label.replace('Blocks with', '').trim());
-
-                            if (isBarrierBlock) {
-                                // Wait for animation before syncing/updating which removes the card
-                                await new Promise(resolve => setTimeout(resolve, 600));
-                            }
-
-                            this.syncState();
-                            this.updateUI();
-
-                            step.destroy();
-                            await new Promise(resolve => setTimeout(resolve, stepDelayMs));
-                        }
-                        stepsProxy.destroy();
-
-                        if (blockSummary.length > 0) {
-                            this.log(`AI blocked with: ${blockSummary.join(', ')}`, "opponent");
-                        } else {
-                            this.log("AI did not block.", "opponent");
-                        }
-
-                        this.pyodide.runPython(`engine.finish_blocking()`);
-
-                    } else {
-                        const defenseResultProxy = this.pyodide.runPython(`
-                            # AI executes defense (blocking)
-                            summary = ai.execute_turn(game, engine)
-                            engine.finish_blocking()
-                            {"summary": summary, "phase": game.phase}
-                        `);
-                        const defenseResult = defenseResultProxy.toJs({ dict_converter: Object.fromEntries });
-                        defenseResultProxy.destroy();
-
-                        if (defenseResult.summary && defenseResult.summary.length > 0) {
-                            this.log(`AI blocked with: ${defenseResult.summary.join(', ')}`, "opponent");
-                        } else {
-                            this.log("AI did not block.", "opponent");
-                        }
-                    }
+                    if (!(await this._waitSession(4800, session))) return;
+                    if (!(await this._runAIDefense(session))) return;
 
                     this.syncState();
 
@@ -2241,20 +2167,8 @@ class PrismataWeb {
                     if (this.state.phase === 'Breach') {
                         this.log("BREACH! Click AI units to destroy them.", "important");
                         this.updateUI();
-                        this.processingTurn = false;
                         return; // Wait for player to assign
                     }
-                } else if (this.state.phase === 'Breach') {
-                    // Human finished Breach Phase -> Transition to Defender Action
-                    this.pyodide.runPython(`
-                        engine.end_phase()
-                        engine.action_phase()
-                    `);
-                    this.syncState();
-                    this.updateUI();
-                    this.processingTurn = false;
-                    this.elements.btnEnd.disabled = false;
-                    this.elements.btnBuy.disabled = false;
                 } else {
                     // No attack, but we might still need to transition to Action phase for AI
                     this.pyodide.runPython(`
@@ -2265,142 +2179,163 @@ class PrismataWeb {
                 }
 
                 // AI Action Phase
-                this.log("AI Opponent is thinking...", "system");
-                await new Promise(resolve => setTimeout(resolve, 4000));
-
-                try {
-                    const speedMap = { '0': 3500, '1': 2000, '2': 0 };
-                    const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
-
-                    let boughtUnits = [];
-
-                    if (stepDelayMs > 0) {
-                        // ===  STEP-BY-STEP AI REPLAY  ===
-                        const stepsProxy = this.pyodide.runPython(`
-                            global_steps_py = ai.plan_turn(game, engine)
-                            global_steps_py
-                        `);
-                        const numSteps = stepsProxy.length;
-
-                        for (let i = 0; i < numSteps; i++) {
-                            const step = stepsProxy.get(i);
-                            if (step.get('type') === 'end') {
-                                step.destroy();
-                                break;
-                            }
-
-                            const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
-
-                            this.log(`🤖 AI: ${label}`, 'opponent');
-
-                            // Visual/Audio cues for AI Actions
-                            if (label.includes('Bought')) {
-                                this.sounds.play('BUY');
-                            } else if (label.includes('Energizer') || label.includes('Miner') || label.includes('Wall') || label.includes('Repeater')) {
-                                this.sounds.play('CLICK');
-                            }
-
-                            this.syncState();
-                            this.updateUI();
-
-                            // Trigger shine if a unit was bought
-                            if (label.includes('Bought')) {
-                                const boughtMatch = label.match(/Bought\s+(\w+)/i);
-                                if (boughtMatch && boughtMatch[1]) {
-                                    this._triggerBuyAnimation(boughtMatch[1].toLowerCase());
-                                }
-                            }
-
-                            step.destroy();
-                            await new Promise(resolve => setTimeout(resolve, stepDelayMs));
-                        }
-                        stepsProxy.destroy();
-
-                        // 3. End turn and transition
-                        const endMsg = this.pyodide.runPython(`
-                            engine.end_phase()
-                            engine.end_turn()
-                            game.current_player.units_purchased = 0
-                            engine.start_phase()
-                            engine.block_phase()
-                            res_msg = ""
-                            if game.phase == "Block":
-                                total_atk = sum(u.attack for u in engine.attacking_units)
-                                res_msg = f"INCOMING: {total_atk}"
-                            else:
-                                engine.action_phase()
-                            res_msg
-                        `);
-
-                        if (endMsg) {
-                            this.log(`🚨 ${endMsg} damage incoming! Assign your blockers.`, 'important');
-                        }
-                    } else {
-                        // ===  INSTANT: single-batch (original behavior)  ===
-                        const resultProxy = this.pyodide.runPython(`
-                            summary = ai.execute_turn(game, engine)
-                            game.current_player.units_purchased = 0
-                            engine.end_phase()
-                            engine.end_turn()
-                            engine.start_phase()
-                            engine.block_phase()
-                            res_msg = ""
-                            if game.phase == "Block":
-                                total_atk = sum(u.attack for u in engine.attacking_units)
-                                res_msg = f"INCOMING: {total_atk}"
-                            else:
-                                engine.action_phase()
-                            {"summary": summary, "msg": res_msg}
-                        `);
-                        const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
-                        resultProxy.destroy();
-
-                        if (result.summary && result.summary.length > 0) {
-                            this.log(`AI Actions: ${result.summary.join(", ")}`, 'opponent');
-                            result.summary.forEach(action => {
-                                if (action.includes('Bought')) {
-                                    const boughtMatch = action.match(/Bought\s+(\w+)/i);
-                                    if (boughtMatch && boughtMatch[1]) {
-                                        boughtUnits.push(boughtMatch[1].toLowerCase());
-                                    }
-                                }
-                            });
-                        }
-                        if (result.msg) {
-                            this.log(`🚨 ${result.msg} damage incoming! Assign your blockers.`, 'important');
-                        }
-                    }
-
-                    this.syncState();
-                    this.updateUI();
-
-                    if (boughtUnits.length > 0) {
-                        boughtUnits.forEach(u => this._triggerBuyAnimation(u));
-                    }
-
-                    if (this.state.phase !== 'Block') {
-                        this.log("Your turn!", "player1");
-                    }
-                } catch (aiError) {
-                    console.error("AI turn error:", aiError);
-                    this.log("AI turn failed: " + aiError.message, "important");
-                    this.pyodide.runPython(`
-                        game.current_player.units_purchased = 0
-                        if game.phase != "Action":
-                            engine.action_phase()
-                    `);
-                    this.syncState();
-                    this.updateUI();
-                }
-
-                this.processingTurn = false;
+                await this._runAIActionTurn(session);
             }
         } catch (error) {
             console.error("Turn processing error:", error);
             this.log("Error processing turn: " + error.message, "important");
-            this.processingTurn = false;
-            this.elements.btnEnd.disabled = false;
-            this.elements.btnBuy.disabled = false;
+        } finally {
+            this._endProcessing(session);
+        }
+    }
+
+    // Per-step delay for the AI speed setting (0 = instant)
+    _aiStepDelay() {
+        const speedMap = { '0': 3500, '1': 2000, '2': 0 };
+        return speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
+    }
+
+    // AI blocks step by step (same plan at every speed). Returns false if the game was abandoned meanwhile.
+    async _runAIDefense(session) {
+        const stepDelayMs = this._aiStepDelay();
+        const stepsProxy = this.pyodide.runPython(`
+            global_def_steps_py = ai.plan_defense(game, engine)
+            global_def_steps_py
+        `);
+        const numSteps = stepsProxy.length;
+        const blockSummary = [];
+
+        try {
+            for (let i = 0; i < numSteps; i++) {
+                const step = stepsProxy.get(i);
+                const stepData = step.toJs({ dict_converter: Object.fromEntries });
+                step.destroy();
+                if (stepData.type === 'end') break;
+
+                const isBarrierBlock = stepData.type === 'block' && stepData.unit === 'barrier';
+                if (isBarrierBlock) {
+                    // Find the barrier card to animate before it's removed by syncState
+                    const barrierCard = this.elements.p2Units.querySelector('[data-type="barrier"]:not(.exhausted)'); // AI is always P2 in PVE
+                    if (barrierCard) {
+                        barrierCard.classList.add('unit-destroy');
+                        this.sounds.play('DESTROY');
+                    }
+                }
+
+                const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_def_steps_py[${i}])`);
+                this.log(`🤖 AI: ${label}`, 'opponent');
+                this.sounds.play('BLOCK');
+                blockSummary.push(label.replace('Blocks with', '').trim());
+
+                // Wait for the barrier animation before syncing/updating removes the card
+                if (isBarrierBlock && !(await this._waitSession(600, session))) return false;
+
+                this.syncState();
+                this.updateUI();
+
+                if (!(await this._waitSession(stepDelayMs, session))) return false;
+            }
+        } finally {
+            stepsProxy.destroy();
+        }
+
+        if (blockSummary.length > 0) {
+            this.log(`AI blocked with: ${blockSummary.join(', ')}`, "opponent");
+        } else {
+            this.log("AI did not block.", "opponent");
+        }
+
+        this.pyodide.runPython(`engine.finish_blocking()`);
+        return true;
+    }
+
+    // AI plays its Action phase step by step (same plan at every speed), then passes the turn back.
+    // Returns false if the game ended or was abandoned meanwhile.
+    async _runAIActionTurn(session) {
+        this.log("AI Opponent is thinking...", "system");
+        if (!(await this._waitSession(4000, session))) return false;
+        if (this.state.gameOver) return false;
+
+        try {
+            const stepDelayMs = this._aiStepDelay();
+            const stepsProxy = this.pyodide.runPython(`
+                global_steps_py = ai.plan_turn(game, engine)
+                global_steps_py
+            `);
+            const numSteps = stepsProxy.length;
+
+            try {
+                for (let i = 0; i < numSteps; i++) {
+                    const step = stepsProxy.get(i);
+                    const stepType = step.get('type');
+                    step.destroy();
+                    if (stepType === 'end') break;
+
+                    const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
+
+                    this.log(`🤖 AI: ${label}`, 'opponent');
+
+                    // Visual/Audio cues for AI Actions
+                    if (label.includes('Bought')) {
+                        this.sounds.play('BUY');
+                    } else if (label.includes('Energizer') || label.includes('Miner') || label.includes('Wall') || label.includes('Repeater')) {
+                        this.sounds.play('CLICK');
+                    }
+
+                    this.syncState();
+                    this.updateUI();
+
+                    // Trigger shine if a unit was bought
+                    const boughtMatch = label.match(/Bought\s+(\w+)/i);
+                    if (boughtMatch && boughtMatch[1]) {
+                        this._triggerBuyAnimation(boughtMatch[1].toLowerCase());
+                    }
+
+                    if (!(await this._waitSession(stepDelayMs, session))) return false;
+                }
+            } finally {
+                stepsProxy.destroy();
+            }
+
+            // End turn and transition
+            const endMsg = this.pyodide.runPython(`
+                engine.end_phase()
+                engine.end_turn()
+                game.current_player.units_purchased = 0
+                engine.start_phase()
+                engine.block_phase()
+                res_msg = ""
+                if game.phase == "Block":
+                    total_atk = sum(u.attack for u in engine.attacking_units)
+                    res_msg = f"INCOMING: {total_atk}"
+                else:
+                    engine.action_phase()
+                res_msg
+            `);
+
+            if (endMsg) {
+                this.log(`🚨 ${endMsg} damage incoming! Assign your blockers.`, 'important');
+            }
+
+            this.syncState();
+            this.updateUI();
+
+            if (this.state.phase !== 'Block') {
+                this.log("Your turn!", "player1");
+            }
+            return true;
+        } catch (aiError) {
+            if (session !== this.gameSession) return false;
+            console.error("AI turn error:", aiError);
+            this.log("AI turn failed: " + aiError.message, "important");
+            this.pyodide.runPython(`
+                game.current_player.units_purchased = 0
+                if game.phase != "Action":
+                    engine.action_phase()
+            `);
+            this.syncState();
+            this.updateUI();
+            return false;
         }
     }
 
@@ -2443,7 +2378,7 @@ class PrismataWeb {
 
     _triggerBuyAnimation(unitType) {
         // AI purchases during AI turn go to AI area (P2 usually, or whoever is current)
-        const isP1Turn = this.state.currentPlayer === this.state.p1.name;
+        const isP1Turn = this.isP1Turn();
         const colId = (isP1Turn ? 'p1-units-' : 'p2-units-') + unitType.toLowerCase() + '-col';
         const col = document.getElementById(colId);
         if (!col) return;
@@ -2484,7 +2419,7 @@ class PrismataWeb {
             this.sounds.play('ERROR');
 
             if (msg && typeof msg === 'string' && msg.includes("energy")) {
-                const isP1Turn = this.state.currentPlayer === this.state.p1.name;
+                const isP1Turn = this.isP1Turn();
                 const energyEl = document.getElementById(isP1Turn ? 'p1-energy' : 'p2-energy');
                 if (energyEl && energyEl.parentElement) {
                     energyEl.parentElement.classList.add('error-bump');
@@ -2541,7 +2476,7 @@ class PrismataWeb {
         this.elements.shopGrid.innerHTML = '';
 
         // Determine affordability
-        const player = (this.state.currentPlayer === this.state.p1.name) ? this.state.p1 : this.state.p2;
+        const player = this.isP1Turn() ? this.state.p1 : this.state.p2;
         const currentGold = player.gold;
         const currentEnergy = player.energy;
         // 2nd unit purchased costs +1 Energy
@@ -2838,7 +2773,10 @@ class PrismataWeb {
         if (window.innerWidth <= 768) {
             this.elements.btnEnd.style.display = '';
             this.elements.btnBuy.textContent = 'SHOP';
-            this.elements.btnBuy.onclick = () => { this.handleBuy(); };
+            this.elements.btnBuy.onclick = () => {
+                if (this.isTurnTransitioning || this.processingTurn) return;
+                this.handleBuy();
+            };
             this.elements.btnBuy.parentNode.style.justifyContent = '';
             this.elements.btnBuy.parentNode.style.width = '';
             const mobileBuyBtn = document.getElementById('mobile-shop-buy');
@@ -2849,147 +2787,6 @@ class PrismataWeb {
             const previewCard = document.getElementById('shop-preview-card');
             if (previewCard) previewCard.classList.add('hidden');
         }
-    }
-
-    async runAIActionPhase() {
-        if (this.processingTurn) return;
-        this.processingTurn = true;
-        this.elements.btnEnd.disabled = true;
-        this.elements.btnBuy.disabled = true;
-
-        this.sounds.play('TURN_START');
-        this.log("AI Opponent is thinking...", "system");
-        await new Promise(resolve => setTimeout(resolve, 4000));
-
-        try {
-            const speedMap = { '0': 3500, '1': 2000, '2': 0 };
-            const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
-
-            let boughtUnits = [];
-
-            if (stepDelayMs > 0) {
-                // ===  STEP-BY-STEP AI REPLAY  ===
-                const stepsProxy = this.pyodide.runPython(`
-                    global_steps_py = ai.plan_turn(game, engine)
-                    global_steps_py
-                `);
-                const numSteps = stepsProxy.length;
-
-                for (let i = 0; i < numSteps; i++) {
-                    const step = stepsProxy.get(i);
-                    if (step.get('type') === 'end') {
-                        step.destroy();
-                        break;
-                    }
-
-                    const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
-
-                    this.log(`🤖 AI: ${label}`, 'opponent');
-
-                    // Visual/Audio cues for AI Actions
-                    if (label.includes('Bought')) {
-                        this.sounds.play('BUY');
-                    } else if (label.includes('Energizer') || label.includes('Miner') || label.includes('Wall') || label.includes('Repeater')) {
-                        this.sounds.play('CLICK');
-                    }
-
-                    this.syncState();
-                    this.updateUI();
-
-                    // Trigger shine if a unit was bought
-                    if (label.includes('Bought')) {
-                        const boughtMatch = label.match(/Bought\s+(\w+)/i);
-                        if (boughtMatch && boughtMatch[1]) {
-                            this._triggerBuyAnimation(boughtMatch[1].toLowerCase());
-                        }
-                    }
-
-                    step.destroy();
-                    await new Promise(resolve => setTimeout(resolve, stepDelayMs));
-                }
-                stepsProxy.destroy();
-
-                // 3. End turn and transition
-                const endMsg = this.pyodide.runPython(`
-                    engine.end_phase()
-                    engine.end_turn()
-                    game.current_player.units_purchased = 0
-                    engine.start_phase()
-                    engine.block_phase()
-                    res_msg = ""
-                    if game.phase == "Block":
-                        total_atk = sum(u.attack for u in engine.attacking_units)
-                        res_msg = f"INCOMING: {total_atk}"
-                    else:
-                        engine.action_phase()
-                    res_msg
-                `);
-
-                if (endMsg) {
-                    this.log(`🚨 ${endMsg} damage incoming! Assign your blockers.`, 'important');
-                }
-            } else {
-                // ===  INSTANT: single-batch (original behavior)  ===
-                const resultProxy = this.pyodide.runPython(`
-                    summary = ai.execute_turn(game, engine)
-                    game.current_player.units_purchased = 0
-                    engine.end_phase()
-                    engine.end_turn()
-                    engine.start_phase()
-                    engine.block_phase()
-                    res_msg = ""
-                    if game.phase == "Block":
-                        total_atk = sum(u.attack for u in engine.attacking_units)
-                        res_msg = f"INCOMING: {total_atk}"
-                    else:
-                        engine.action_phase()
-                    {"summary": summary, "msg": res_msg}
-                `);
-                const result = resultProxy.toJs({ dict_converter: Object.fromEntries });
-                resultProxy.destroy();
-
-                if (result.summary && result.summary.length > 0) {
-                    this.log(`AI Actions: ${result.summary.join(", ")}`, 'opponent');
-                    result.summary.forEach(action => {
-                        if (action.includes('Bought')) {
-                            const boughtMatch = action.match(/Bought\s+(\w+)/i);
-                            if (boughtMatch && boughtMatch[1]) {
-                                boughtUnits.push(boughtMatch[1].toLowerCase());
-                            }
-                        }
-                    });
-                }
-                if (result.msg) {
-                    this.log(`🚨 ${result.msg} damage incoming! Assign your blockers.`, 'important');
-                }
-            }
-
-            this.syncState();
-            this.updateUI();
-
-            if (boughtUnits.length > 0) {
-                boughtUnits.forEach(u => this._triggerBuyAnimation(u));
-            }
-
-            if (this.state.phase !== 'Block') {
-                this.log("Your turn!", "player1");
-            }
-
-        } catch (aiError) {
-            console.error("AI turn error:", aiError);
-            this.log("AI turn failed: " + aiError.message, "important");
-            this.pyodide.runPython(`
-                game.current_player.units_purchased = 0
-                if game.phase != "Action":
-                    engine.action_phase()
-            `);
-            this.syncState();
-            this.updateUI();
-        }
-
-        this.processingTurn = false;
-        this.elements.btnEnd.disabled = false;
-        this.elements.btnBuy.disabled = false;
     }
 
     // -- Unit Preview --
@@ -3077,12 +2874,12 @@ class PrismataWeb {
     bindEvents() {
         // Main Game Buttons
         this.elements.btnEnd.onclick = () => {
-            if (this.isTurnTransitioning) return;
+            if (this.isTurnTransitioning || this.processingTurn) return;
             this.sounds.play('CLICK');
             this.handleEndTurn();
         };
         this.elements.btnBuy.onclick = () => {
-            if (this.isTurnTransitioning) return;
+            if (this.isTurnTransitioning || this.processingTurn) return;
             this.handleBuy();
         };
 
@@ -3212,6 +3009,8 @@ class PrismataWeb {
             if (aiSpeedItem) {
                 aiSpeedItem.style.display = this.gameMode === 'AI' ? '' : 'none';
             }
+            // Restart only resets the local copy, which would desync an online game
+            this.elements.btnRestart.style.display = this.gameMode === 'ONLINE' ? 'none' : '';
 
             this.elements.settingsModal.classList.remove('hidden');
         };
@@ -3277,6 +3076,7 @@ class PrismataWeb {
         if (btnExitMenu) {
             btnExitMenu.onclick = () => {
                 this.sounds.play('CLICK');
+                this._abandonGame(); // Stop a running AI turn from continuing in the background
                 this.elements.settingsModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
                 this.showWelcomeScreen();
@@ -3299,6 +3099,7 @@ class PrismataWeb {
         if (this.elements.btnEndgameMenu) {
             this.elements.btnEndgameMenu.onclick = () => {
                 this.sounds.play('CLICK');
+                this._abandonGame();
                 this.elements.endgameModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
                 this.showWelcomeScreen();
@@ -3326,10 +3127,10 @@ class PrismataWeb {
         this.sounds.play('VICTORY');
 
         let winnerName = this.state.winner;
-        let winnerState = winnerName === this.state.p1.name ? this.state.p1 : this.state.p2;
+        let winnerState = this.state.winnerIsP1 ? this.state.p1 : this.state.p2;
 
         let startingUnits = 2; // Miner, Energizer
-        if (winnerName === this.state.p2.name) startingUnits = 3; // + Barrier
+        if (!this.state.winnerIsP1) startingUnits = 3; // + Barrier
 
         let totalAcquired = 0;
         if (winnerState && winnerState.lifetime) {
@@ -3366,7 +3167,8 @@ class PrismataWeb {
 
     updateTutorialUI() {
         if (!this.isTutorial) return;
-        if (this.isTurnTransitioning) return;
+        // Hold while the banner shows, and from End Turn until the next turn's banner has finished
+        if (this.isTurnTransitioning || this.tutorialHold) return;
 
         let text = "";
         let highlightId = "";
@@ -3407,7 +3209,7 @@ class PrismataWeb {
                 highlightId = "btn-end";
                 break;
             case 7: // Turn 2 - Buy Miner
-                if (this.state.turn >= 2 && this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                if (this.state.turn >= 2 && this.isP1Turn() && this.state.phase === 'Action') {
                     text = "Now buy a <b>Miner</b>.<br>Miners convert 🔋 into 🪙!";
                     highlightId = "btn-buy";
                 }
@@ -3430,7 +3232,7 @@ class PrismataWeb {
                 subState = this.state.currentPlayer;
                 break;
             case 10: // Turn 3 - Gold vs Energy
-                if (this.state.turn >= 3 && this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                if (this.state.turn >= 3 && this.isP1Turn() && this.state.phase === 'Action') {
                     const gold = this.state.p1.gold;
 
                     if (gold >= 3) {
@@ -3451,7 +3253,7 @@ class PrismataWeb {
                 highlightId = "btn-end";
                 break;
             case 12: // Turn 4 - Attack Power
-                if (this.state.turn >= 4 && this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                if (this.state.turn >= 4 && this.isP1Turn() && this.state.phase === 'Action') {
                     const hasPrepared = this.state.p1.atk > 0;
                     const hasEnergy = this.state.p1.energy > 0;
                     if (hasPrepared) {
@@ -3490,8 +3292,9 @@ class PrismataWeb {
                 }
                 break;
             case 14: // Final turn start
-                if (this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
+                if (this.isP1Turn() && this.state.phase === 'Action') {
                     text = "The enemy is wide open! Finish this!";
+                    highlightId = "p1-units-energizer-col p1-units-striker-col";
                 } else {
                     text = "";
                 }
@@ -3508,10 +3311,20 @@ class PrismataWeb {
         const oldOverlay = document.querySelector('.tutorial-overlay');
         if (oldOverlay) oldOverlay.remove();
         this.clearTutorialHighlights();
+        this.tutorialHighlightId = '';
 
         if (text === "") return;
 
         this.showTutorialOverlay(text, buttonText, onButtonClick, highlightId);
+    }
+
+    // (Re)apply the current step's highlight. Unit columns are rebuilt on every render, dropping the class.
+    applyTutorialHighlights() {
+        if (!this.isTutorial || !this.tutorialHighlightId) return;
+        this.tutorialHighlightId.split(/\s+/).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('tutorial-highlight', 'tutorial-pulse');
+        });
     }
 
     showTutorialVictory() {
@@ -3580,25 +3393,6 @@ class PrismataWeb {
         const overlay = document.createElement('div');
         overlay.className = 'tutorial-overlay';
 
-        // Flip certain messages to top on mobile/small screens
-        if (window.innerWidth <= 768) {
-            const flipList = [
-                "Time to build! Open the SHOP and buy an Energizer",
-                "New units enter Tapped",
-                "Now buy a Miner",
-                "Tap your Energizer to generate",
-                "Good job. End your turn to see how the AI responds",
-                "The AI just bought a unit!",
-                "Now you have 3 Gold",
-                "End your turn.",
-                "Enemy will have 2 Attack Power incoming"
-            ];
-            const cleanText = text.replace(/<[^>]*>/g, '').trim();
-            if (flipList.some(msg => cleanText.startsWith(msg))) {
-                overlay.classList.add('top');
-            }
-        }
-
         let html = `<div class="tutorial-text">${text}</div>`;
         if (buttonText) {
             html += `<button class="tutorial-btn">${buttonText}</button>`;
@@ -3621,15 +3415,20 @@ class PrismataWeb {
 
         document.body.appendChild(overlay);
 
-        if (highlightId) {
-            const ids = highlightId.trim().split(/\s+/);
-            ids.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.classList.add('tutorial-highlight');
-                    el.classList.add('tutorial-pulse');
+        this.tutorialHighlightId = (highlightId || '').trim();
+        this.applyTutorialHighlights();
+
+        // Mobile: bring a highlighted unit into view, and keep the box away from what it points at
+        if (window.innerWidth <= 768) {
+            const firstId = this.tutorialHighlightId.split(/\s+/)[0];
+            const target = firstId ? document.getElementById(firstId) : null;
+            if (target) {
+                if (firstId.endsWith('-col')) target.scrollIntoView({ block: 'nearest' });
+                const rect = target.getBoundingClientRect();
+                if (rect.top + rect.height / 2 > window.innerHeight / 2) {
+                    overlay.classList.add('top');
                 }
-            });
+            }
         }
     }
 
