@@ -189,6 +189,77 @@
     text-shadow: none;
 }
 
+/* ===== Bought card flying in from the SHOP button / opponent's plate ===== */
+.fly-card {
+    position: fixed;
+    z-index: 3600;
+    pointer-events: none;
+    background-color: rgba(20, 22, 30, 0.95);
+    background-size: cover;
+    background-position: center;
+    border: 2px solid rgba(255, 215, 0, 0.85);
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 18px rgba(255, 215, 0, 0.45);
+}
+
+/* ===== Base hit: plate shake + red screen-edge flash ===== */
+.player-stats-bar.hit {
+    animation: plate-shake 0.45s ease-in-out;
+}
+
+@keyframes plate-shake {
+    0%, 100% { translate: 0 0; }
+    20%      { translate: -7px 0; }
+    40%      { translate: 6px 0; }
+    60%      { translate: -4px 0; }
+    80%      { translate: 2px 0; }
+}
+
+.hit-flash {
+    position: fixed;
+    inset: 0;
+    z-index: 3900;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(255, 0, 0, 0) 50%, rgba(255, 30, 50, 0.5) 100%);
+    animation: hit-flash 0.65s ease-out forwards;
+}
+
+@keyframes hit-flash {
+    0%   { opacity: 0; }
+    15%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* ===== Last-turn recap toast (under the turn ribbon) ===== */
+.recap-toast {
+    position: absolute;
+    /* Below the name plates and the attack meter, in the open board space */
+    top: calc(10.5rem * var(--ui-scale));
+    left: 50%;
+    translate: -50% -8px;
+    z-index: 4900;
+    max-width: min(90%, 640px);
+    padding: 0.55rem 1.2rem;
+    border-radius: 12px;
+    background: rgba(10, 8, 24, 0.92);
+    border: 1px solid rgba(180, 77, 255, 0.55);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    color: #eadcff;
+    font-weight: 700;
+    font-size: calc(0.95rem * var(--ui-scale));
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, translate 0.25s ease;
+}
+
+.recap-toast.visible {
+    opacity: 1;
+    translate: -50% 0;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
 /* ===== AI activity: glow on the card it just used, dots while it thinks ===== */
 /* An outline ring, since tapped cards force box-shadow: none !important */
 .unit-card.ai-acted {

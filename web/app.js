@@ -31,6 +31,8 @@ class PrismataWeb {
         this.endGameShown = false;
         this._lastHp = {}; // Base HP seen per seat, for damage popups
         this._maxHp = {}; // Starting base HP per seat, for the health bars
+        this._flyingUids = new Set(); // Bought cards whose fly-in ghost hasn't landed yet
+        this._recapStart = null; // Opponent's unit counts at the start of their turn
         this.hasInteracted = false;
         this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" banner
         this.isTutorial = false;
@@ -979,6 +981,10 @@ class PrismataWeb {
         this.aiThinking = false;
         const aiPlate = document.querySelector('#opponent-area .player-stats-bar');
         if (aiPlate) aiPlate.classList.remove('thinking');
+        this._flyingUids.clear();
+        this._recapStart = null;
+        const recap = document.getElementById('recap-toast');
+        if (recap) recap.classList.remove('visible');
         document.body.classList.remove('lockout');
         if (this.targeting) {
             this.targeting = null;
@@ -1062,6 +1068,7 @@ class PrismataWeb {
         if (this.currentTurnPlayer !== turnKey) {
             const oldPlayer = this.currentTurnPlayer;
             this.currentTurnPlayer = turnKey;
+            this._trackRecap(turnKey);
 
             const triggerBanner = () => {
                 const banner = document.getElementById('turn-banner');
@@ -1172,6 +1179,7 @@ class PrismataWeb {
         if (lastHp !== undefined && data.hp < lastHp) {
             const r = document.getElementById(`${player}-hp`).getBoundingClientRect();
             this._spawnFloatText(r.left + r.width / 2, r.top - 6, `-${lastHp - data.hp}`, 'damage');
+            this._flashBaseHit(player);
         }
         this._lastHp[player] = data.hp;
         this._renderHpBar(player, data.hp, lastHp);
@@ -1554,6 +1562,8 @@ class PrismataWeb {
                 card.dataset.type = type;
                 card.dataset.unitNumber = unitNumber;
                 card.dataset.uid = unit.id; // Stable across re-renders; used to animate changes
+                // A just-bought card stays hidden until its fly-in ghost lands (even if re-rendered meanwhile)
+                if (this._flyingUids.has(String(unit.id))) card.style.visibility = 'hidden';
                 card.dataset.hp = unit.hp;
                 card.dataset.used = unit.usedThisTurn ? '1' : '';
 
@@ -1663,7 +1673,7 @@ class PrismataWeb {
         container._renderPhase = phase;
         container._renderSession = this.gameSession;
         // A new or restarted game replaces every unit; nothing to animate from
-        if (prev.session !== this.gameSession || prev.cards.size === 0) return;
+        if (prev.session !== this.gameSession) return;
 
         const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const cards = Array.from(container.querySelectorAll('.unit-card[data-uid]'));
@@ -1673,10 +1683,14 @@ class PrismataWeb {
             return old && old.exhausted && !el.classList.contains('exhausted');
         });
         const isWave = untapping.length >= 2; // turn start: untap one column after another
+        const boughtCards = [];
 
         cards.forEach(el => {
             const old = prev.cards.get(el.dataset.uid);
-            if (!old) return; // newly bought: the purchase shine handles it
+            if (!old) {
+                boughtCards.push(el); // a unit id we haven't seen this game: it was just bought
+                return;
+            }
             const exhausted = el.classList.contains('exhausted');
 
             // Resource gains: a unit that just tapped for its ability
@@ -1701,6 +1715,8 @@ class PrismataWeb {
             ], { duration: 200, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', delay, fill: 'backwards' });
         });
 
+        boughtCards.forEach(el => this._flyInCard(el, container, reduceMotion));
+
         // Combat losses: units that vanished during blocking/breach pop their HP where they stood
         const inCombat = ['Block', 'Breach'].includes(phase) || ['Block', 'Breach'].includes(prev.phase);
         if (inCombat) {
@@ -1720,6 +1736,141 @@ class PrismataWeb {
         el.style.top = `${y}px`;
         document.body.appendChild(el);
         setTimeout(() => el.remove(), 950);
+    }
+
+    // A just-bought card flies in (as a ghost above everything) from the SHOP button, or from the
+    // owner's name plate when it's the opponent buying; then it shines in place
+    _flyInCard(card, container, reduceMotion) {
+        const uid = card.dataset.uid;
+        const shine = () => {
+            const live = container.querySelector(`.unit-card[data-uid="${uid}"]`);
+            if (!live) return;
+            live.style.visibility = '';
+            live.classList.remove('unit-shine');
+            void live.offsetWidth; // restart the animation
+            live.classList.add('unit-shine');
+            setTimeout(() => live.classList.remove('unit-shine'), 1100);
+        };
+        if (reduceMotion) {
+            shine();
+            return;
+        }
+
+        const ownerSeat = container.id === 'p1-units' ? 'p1' : 'p2';
+        const actingSeat = this.isP1Turn() ? 'p1' : 'p2';
+        const shopBtn = this.elements.btnBuy;
+        const fromShop = ownerSeat === actingSeat && this._isMyTurn() && shopBtn && shopBtn.offsetParent !== null;
+        const source = fromShop ? shopBtn : document.querySelector(`#${ownerSeat === 'p1' ? 'player-area' : 'opponent-area'} .player-stats-bar`);
+        if (!source) {
+            shine();
+            return;
+        }
+
+        const from = source.getBoundingClientRect();
+        const to = card.getBoundingClientRect();
+        const w = card.offsetWidth;
+        const h = card.offsetHeight;
+        const toX = to.left + to.width / 2;
+        const toY = to.top + to.height / 2;
+        const ghost = document.createElement('div');
+        ghost.className = 'fly-card';
+        ghost.style.width = `${w}px`;
+        ghost.style.height = `${h}px`;
+        ghost.style.left = `${toX - w / 2}px`;
+        ghost.style.top = `${toY - h / 2}px`;
+        const art = card.querySelector('.unit-art');
+        if (art) ghost.style.backgroundImage = art.style.backgroundImage;
+        document.body.appendChild(ghost);
+
+        this._flyingUids.add(uid);
+        card.style.visibility = 'hidden';
+        let landed = false;
+        const land = () => {
+            if (landed) return;
+            landed = true;
+            this._flyingUids.delete(uid);
+            ghost.remove();
+            shine();
+        };
+        const flight = ghost.animate([
+            { translate: `${from.left + from.width / 2 - toX}px ${from.top + from.height / 2 - toY}px`, scale: 0.35, rotate: '0deg', opacity: 0.5 },
+            { translate: '0px 0px', scale: 1, rotate: card.classList.contains('exhausted') ? '90deg' : '0deg', opacity: 1 }
+        ], { duration: 450, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+        flight.onfinish = land;
+        flight.oncancel = land;
+        setTimeout(land, 900); // safety net if the animation never reports back
+    }
+
+    // Base took damage: its plate shakes, and the screen edge flashes red when it's your base
+    _flashBaseHit(player) {
+        const plate = document.querySelector(`#${player === 'p1' ? 'player-area' : 'opponent-area'} .player-stats-bar`);
+        if (plate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            plate.classList.remove('hit');
+            void plate.offsetWidth;
+            plate.classList.add('hit');
+            setTimeout(() => plate.classList.remove('hit'), 500);
+        }
+        const localSeat = this._localSeat();
+        if (localSeat === null || localSeat === player) {
+            const flash = document.createElement('div');
+            flash.className = 'hit-flash';
+            document.body.appendChild(flash);
+            setTimeout(() => flash.remove(), 700);
+        }
+    }
+
+    // Last-turn recap (AI / online): note the opponent's units when their turn starts, and when mine
+    // starts, report what they bought and whether they're attacking
+    _trackRecap(turnKey) {
+        const localSeat = this._localSeat();
+        const s = this.state;
+        if (!localSeat || this.isTutorial || !s || s.gameOver) return;
+        if (s.phase === 'Breach') return; // the attacker is shown as active during a breach: not a new turn
+        const oppSeat = localSeat === 'p1' ? 'p2' : 'p1';
+
+        if (turnKey === oppSeat) {
+            this._recapStart = { session: this.gameSession, lifetime: { ...(s[oppSeat].lifetime || {}) } };
+            return;
+        }
+        const start = this._recapStart;
+        this._recapStart = null;
+        if (!start || start.session !== this.gameSession) return;
+
+        const now = s[oppSeat].lifetime || {};
+        const bought = [];
+        Object.keys(now).forEach(type => {
+            const n = (now[type] || 0) - (start.lifetime[type] || 0);
+            if (n > 0) {
+                const name = type.charAt(0).toUpperCase() + type.slice(1);
+                bought.push(n > 1 ? `${n}× ${name}` : name);
+            }
+        });
+        const attack = s.phase === 'Block' ? ((s.combat && s.combat.atk) || 0) : 0;
+        const who = this.gameMode === 'AI' ? 'AI' : 'Opponent';
+        const text = `${who} ${bought.length ? 'bought ' + bought.join(' + ') : 'bought nothing'} · ${attack > 0 ? `attacking for ⚔️${attack}` : 'no attack'}`;
+        const session = this.gameSession;
+        setTimeout(() => {
+            if (session === this.gameSession && this.state && !this.state.gameOver) this._showRecap(text);
+        }, 1250); // after the turn ribbon
+    }
+
+    _showRecap(text) {
+        let toast = document.getElementById('recap-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'recap-toast';
+            toast.className = 'recap-toast';
+            toast.title = 'Click to dismiss';
+            toast.onclick = () => toast.classList.remove('visible');
+            document.querySelector('.game-board').appendChild(toast);
+        }
+        toast.textContent = text;
+        toast.classList.remove('visible');
+        void toast.offsetWidth;
+        toast.classList.add('visible');
+        clearTimeout(this._recapTimer);
+        this._recapTimer = setTimeout(() => toast.classList.remove('visible'), 4500);
+        this.log(`Last turn: ${text}`, 'opponent');
     }
 
     // Label for what clicking a card will do right now ('' when nothing)
@@ -2698,14 +2849,8 @@ class PrismataWeb {
                     }
 
                     this.syncState();
-                    this.updateUI();
+                    this.updateUI(); // a bought unit flies in from the AI's plate (see _animateCardChanges)
                     this._flashAIStep(stepData);
-
-                    // Trigger shine if a unit was bought
-                    const boughtMatch = label.match(/Bought\s+(\w+)/i);
-                    if (boughtMatch && boughtMatch[1]) {
-                        this._triggerBuyAnimation(boughtMatch[1].toLowerCase());
-                    }
 
                     if (!(await this._waitSession(stepDelayMs, session))) return false;
                 }
@@ -2777,8 +2922,7 @@ class PrismataWeb {
             }
 
             this.syncState();
-            this.updateUI();
-            this._triggerBuyAnimation(type);
+            this.updateUI(); // the new unit flies in from the SHOP button (see _animateCardChanges)
             this.hideShop();
 
             if (this.isTutorial) {
@@ -2789,26 +2933,6 @@ class PrismataWeb {
         } else {
             this.sounds.play('ERROR');
             this.log(`Error: ${result.msg}`, 'important');
-        }
-    }
-
-    _triggerBuyAnimation(unitType) {
-        // AI purchases during AI turn go to AI area (P2 usually, or whoever is current)
-        const isP1Turn = this.isP1Turn();
-        const colId = (isP1Turn ? 'p1-units-' : 'p2-units-') + unitType.toLowerCase() + '-col';
-        const col = document.getElementById(colId);
-        if (!col) return;
-
-        // The newest card is always the last child in its column
-        const target = col.querySelector('.unit-card:last-child');
-
-        if (target) {
-            setTimeout(() => {
-                target.classList.remove('unit-shine');
-                void target.offsetWidth; // Force CSS reflow to restart animation
-                target.classList.add('unit-shine');
-                setTimeout(() => target.classList.remove('unit-shine'), 1100);
-            }, 300);
         }
     }
 
