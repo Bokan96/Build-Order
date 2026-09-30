@@ -10,8 +10,8 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=0.8.3">
-    <link rel="stylesheet" href="effects.css?v=0.8.3">
+    <link rel="stylesheet" href="style.css?v=0.8.4">
+    <link rel="stylesheet" href="effects.css?v=0.8.4">
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self' https://cdn.jsdelivr.net https://unpkg.com; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com wss://0.peerjs.com https://0.peerjs.com https://unpkg.com;">
     <link rel="icon" type="image/webp" href="favicon.webp">
@@ -39,7 +39,7 @@
                 <img src="assets/UI/logo.png" alt="Build Order" class="menu-logo-img">
             </div>
             <div class="game-description">
-                <p>Version 0.8.3 - Smoother, calmer visuals</p>
+                <p>Version 0.8.4 - Clearer, more intuitive UI</p>
             </div>
             <div class="menu-buttons">
                 <button id="btn-online" class="menu-btn secondary">
@@ -205,7 +205,15 @@
                 <div id="game-info" class="game-info">
                     <div class="stat-badge player"><span id="player-name-display">PLAYER 1</span></div>
                     <div class="stat-badge turn">TURN <span id="turn-count">1</span></div>
-                    <div class="stat-badge phase"><span id="phase-name">START PHASE</span></div>
+                    <div class="stat-badge phase">
+                        <!-- Desktop shows the step tracker; mobile (badge moved to the separator) shows only the name -->
+                        <span id="phase-name">START PHASE</span>
+                        <ol id="phase-steps" class="phase-steps" aria-label="Turn phases">
+                            <li data-phase="Block">Block</li>
+                            <li data-phase="Breach">Breach</li>
+                            <li data-phase="Action">Action</li>
+                        </ol>
+                    </div>
                     <button id="btn-settings" class="icon-btn settings-btn" title="Settings">⚙️</button>
                 </div>
             </div>
@@ -221,7 +229,11 @@
             <section id="opponent-area" class="player-area opponent">
                 <div class="player-stats-bar glass">
                     <div class="player-identity">
-                        <span class="name" id="p2-name">AI</span>
+                        <div class="name-row">
+                            <span class="name" id="p2-name">AI</span>
+                            <span class="you-tag hidden" id="p2-you">YOU</span>
+                        </div>
+                        <div class="hp-bar" id="p2-hp-bar" title="Base health"></div>
                     </div>
                     <div class="resource-row">
                         <div class="resource hp" title="Health: If this reaches 0, you lose the game."><span
@@ -239,17 +251,24 @@
             </section>
 
             <div class="player-separator">
-                <div id="central-attack-container" class="central-attack glass" title="Total Attack Power">
+                <div id="central-attack-container" class="central-attack glass mode-idle" title="Attack">
+                    <span id="central-atk-label" class="atk-label"></span>
                     <span class="icon">⚔️</span>
                     <span id="central-atk">0</span>
+                    <span id="central-atk-arrow" class="atk-arrow" aria-hidden="true">➜</span>
                 </div>
+                <div id="central-atk-breakdown" class="atk-breakdown"></div>
             </div>
 
             <!-- Player Side -->
             <section id="player-area" class="player-area player">
                 <div class="player-stats-bar glass">
                     <div class="player-identity">
-                        <span class="name" id="p1-name">PLAYER 1</span>
+                        <div class="name-row">
+                            <span class="name" id="p1-name">PLAYER 1</span>
+                            <span class="you-tag hidden" id="p1-you">YOU</span>
+                        </div>
+                        <div class="hp-bar" id="p1-hp-bar" title="Base health"></div>
                     </div>
                     <div class="resource-row">
                         <div id="p1-energy-res" class="resource energy"
@@ -277,8 +296,10 @@
                     </div>
                     <button id="btn-toggle-log" class="log-toggle-btn" title="Expand Log">📜</button>
                 </div>
+                <div id="turn-hint" class="turn-hint" aria-live="polite"></div>
                 <div class="main-buttons">
-                    <button id="btn-buy" class="action-btn shop-btn">SHOP</button>
+                    <button id="btn-buy" class="action-btn shop-btn"><span class="btn-label">SHOP</span><span
+                            id="buys-chip" class="buys-chip hidden"></span></button>
                     <button id="btn-end" class="action-btn accent">END TURN</button>
                 </div>
             </div>
@@ -383,7 +404,7 @@
     </div>
 
     <script src="multiplayer.js?v=0.8.2"></script>
-    <script type="module" src="app.js?v=0.8.3"></script>
+    <script type="module" src="app.js?v=0.8.4"></script>
 </body>
 
 </html>

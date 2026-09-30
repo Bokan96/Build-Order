@@ -5,6 +5,18 @@
 
 const UNIT_KEYS = ['miner', 'energizer', 'striker', 'guard', 'wall', 'repeater', 'volatile', 'barrier'];
 
+// Shop catalogue: gold cost and lifetime cap per unit (mirrors units.py / game_state.py)
+const SHOP_UNITS = [
+    { id: 'barrier', name: 'Barrier', cost: 1, cap: 5 },
+    { id: 'miner', name: 'Miner', cost: 2, cap: 5 },
+    { id: 'energizer', name: 'Energizer', cost: 2, cap: 5 },
+    { id: 'striker', name: 'Striker', cost: 3, cap: 5 },
+    { id: 'guard', name: 'Guard', cost: 3, cap: 5 },
+    { id: 'wall', name: 'Wall', cost: 3, cap: 3 },
+    { id: 'repeater', name: 'Repeater', cost: 3, cap: 5 },
+    { id: 'volatile', name: 'Volatile', cost: 4, cap: 5 }
+];
+
 class PrismataWeb {
     constructor() {
         this.pyodide = null;
@@ -18,6 +30,7 @@ class PrismataWeb {
         this.gameSession = 0; // Bumped on every new/abandoned game so stale async AI loops stop
         this.endGameShown = false;
         this._lastHp = {}; // Base HP seen per seat, for damage popups
+        this._maxHp = {}; // Starting base HP per seat, for the health bars
         this.hasInteracted = false;
         this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" banner
         this.isTutorial = false;
@@ -839,6 +852,7 @@ class PrismataWeb {
         this.endGameShown = false;
         this.onlineGameReady = this.gameMode === 'ONLINE';
         this._lastHp = {}; // Base HP seen per seat, for damage popups
+        this._maxHp = {};
 
         // Initialize GameState and GameEngine instances in Python.
         // Names come from user input / the remote peer, so they're passed as globals, never spliced into code.
@@ -900,6 +914,7 @@ class PrismataWeb {
                             "exhausted": u.exhausted,
                             "hp": u.current_health if u.is_alive() else 0,
                             "atk": u.attack,
+                            "atkCost": u.attack_cost,
                             "blk": u.block,
                             "type": u.name.lower(),
                             "isAlive": u.is_alive(),
@@ -961,6 +976,9 @@ class PrismataWeb {
         this.processingTurn = false;
         this.isTurnTransitioning = false;
         this.tutorialHold = false;
+        this.aiThinking = false;
+        const aiPlate = document.querySelector('#opponent-area .player-stats-bar');
+        if (aiPlate) aiPlate.classList.remove('thinking');
         document.body.classList.remove('lockout');
         if (this.targeting) {
             this.targeting = null;
@@ -1017,6 +1035,15 @@ class PrismataWeb {
         document.getElementById('phase-name').textContent = phaseText;
         document.getElementById('player-name-display').textContent = this.state.currentPlayer.toUpperCase();
 
+        // Phase tracker (Block › Breach › Action): highlight the current step, mark earlier ones done
+        const phaseOrder = ['Block', 'Breach', 'Action'];
+        const phaseIndex = phaseOrder.indexOf(this.state.phase);
+        document.querySelectorAll('#phase-steps li').forEach(li => {
+            const i = phaseOrder.indexOf(li.dataset.phase);
+            li.classList.toggle('current', i === phaseIndex);
+            li.classList.toggle('done', phaseIndex > -1 && i < phaseIndex);
+        });
+
         // Update Tab Title
         const playerShort = this.isP1Turn() ? 'P1' : 'P2';
         const phaseEmojis = {
@@ -1047,6 +1074,7 @@ class PrismataWeb {
                     banner.parentNode.replaceChild(newBanner, banner);
 
                     newBanner.classList.remove('hidden');
+                    newBanner.classList.toggle('them', turnKey !== (this._localSeat() || 'p1')); // purple for the opponent
                     this.isTurnTransitioning = true; // Lock interaction
                     document.body.classList.add('lockout'); // Visual lockout
 
@@ -1064,14 +1092,14 @@ class PrismataWeb {
                             this.updateTutorialUI();
                             this.applyTutorialHighlights();
                         }
-                    }, 2000); // 2s is the duration of bannerIn animation
+                    }, 1200); // matches the ribbonIn animation in style.css
                 }
             };
 
             // Delay for the very first turn of the game
             if (this.state.turn === 1 && !oldPlayer) {
                 this.isTurnTransitioning = true; // Lock tutorial/UI immediately
-                setTimeout(triggerBanner, 1000);
+                setTimeout(triggerBanner, 600);
             } else {
                 triggerBanner();
             }
@@ -1114,11 +1142,22 @@ class PrismataWeb {
         document.getElementById('player-area').classList.toggle('inactive-side', dimSides && !activeIsP1);
         document.getElementById('opponent-area').classList.toggle('inactive-side', dimSides && activeIsP1);
 
+        // Seat colours + YOU tag: cyan for you, purple for the opponent (hotseat: seat 1 cyan, seat 2 purple)
+        const localSeat = this._localSeat();
+        const mySeat = localSeat || 'p1';
+        document.getElementById('player-area').classList.toggle('them', mySeat !== 'p1');
+        document.getElementById('opponent-area').classList.toggle('them', mySeat !== 'p2');
+        document.getElementById('p1-you').classList.toggle('hidden', localSeat !== 'p1');
+        document.getElementById('p2-you').classList.toggle('hidden', localSeat !== 'p2');
+
         // Update Central Attack
         this.updateCentralAttack();
 
         // Update Buttons
         this.updateActionButtons();
+
+        // "What now" hint next to the buttons
+        this.updateTurnHint();
 
         // Tutorial last: renderUnits rebuilds the unit columns, which would drop any highlight applied earlier
         if (this.isTutorial) {
@@ -1135,6 +1174,7 @@ class PrismataWeb {
             this._spawnFloatText(r.left + r.width / 2, r.top - 6, `-${lastHp - data.hp}`, 'damage');
         }
         this._lastHp[player] = data.hp;
+        this._renderHpBar(player, data.hp, lastHp);
 
         document.getElementById(`${player}-hp`).textContent = data.hp;
 
@@ -1160,36 +1200,84 @@ class PrismataWeb {
         this.updateResourceDisplay(`${player}-hp`, data.hp, true);
     }
 
-    updateCentralAttack() {
-        const combat = this.state.combat;
-        const p1Atk = this.state.p1?.atk || 0;
-        const p2Atk = this.state.p2?.atk || 0;
-        let displayVal = Math.max(p1Atk, p2Atk);
-
-        // Logic for phases
-        if (this.state.phase === 'Block' && combat) {
-            displayVal = Math.max(0, combat.atk - combat.blk);
-        } else if (this.state.phase === 'Breach' && combat) {
-            displayVal = Math.max(0, combat.atk - combat.blk - combat.assigned);
-        }
-
-        const atkEl = document.getElementById('central-atk');
-        if (atkEl) {
-            atkEl.textContent = displayVal;
-            const container = atkEl.parentElement;
-            container.style.opacity = '1';
-            if (displayVal > 0) {
-                container.style.borderColor = 'var(--accent-red)';
-                container.style.borderWidth = '3px';
-                container.style.background = '#ac2c2c';
-                container.classList.add('danger');
-            } else {
-                container.style.borderColor = 'var(--glass-border)';
-                container.style.borderWidth = '2px';
-                container.style.background = '#0a093a';
-                container.classList.remove('danger');
+    // Segmented base-health bar under the player's name; pips lost since the last update flash
+    _renderHpBar(player, hp, lastHp) {
+        const bar = document.getElementById(`${player}-hp-bar`);
+        if (!bar) return;
+        if (this._maxHp[player] === undefined) this._maxHp[player] = Math.max(1, hp); // 10, or 2 in the tutorial
+        const max = Math.min(20, Math.max(this._maxHp[player], hp));
+        if (bar.children.length !== max) {
+            bar.innerHTML = '';
+            for (let i = 0; i < max; i++) {
+                const pip = document.createElement('span');
+                pip.className = 'hp-pip';
+                bar.appendChild(pip);
             }
         }
+        Array.from(bar.children).forEach((pip, i) => {
+            const lost = i >= hp;
+            pip.classList.toggle('lost', lost);
+            if (lost && lastHp !== undefined && i < lastHp) {
+                pip.classList.remove('just-lost');
+                void pip.offsetWidth; // restart the flash
+                pip.classList.add('just-lost');
+            }
+        });
+        bar.title = `Base health: ${Math.max(0, hp)} / ${max}`;
+    }
+
+    // Attack meter between the two sides: what the number means, and an arrow toward the defender
+    updateCentralAttack() {
+        const s = this.state;
+        const combat = s.combat || { atk: 0, blk: 0, assigned: 0 };
+        const isP1Turn = this.isP1Turn();
+        let mode = 'idle', value = 0, label = '', breakdown = '', attackerIsP1 = null;
+
+        if (s.phase === 'Block') {
+            // The current player is defending against the other seat
+            value = Math.max(0, combat.atk - combat.blk);
+            if (value > 0) {
+                mode = 'incoming';
+                label = 'INCOMING';
+                attackerIsP1 = !isP1Turn;
+                breakdown = combat.blk > 0 ? `${combat.atk} incoming · ${combat.blk} blocked` : `${combat.atk} incoming`;
+            } else if (combat.atk > 0) {
+                label = 'BLOCKED';
+                breakdown = `${combat.atk} incoming · all blocked`;
+            }
+        } else if (s.phase === 'Breach') {
+            value = Math.max(0, combat.atk - combat.blk - combat.assigned);
+            mode = 'assign';
+            label = 'ASSIGN';
+            attackerIsP1 = isP1Turn; // Breach makes the attacker the active seat
+            breakdown = 'unblocked damage';
+        } else {
+            const active = isP1Turn ? s.p1 : s.p2;
+            value = (active && active.atk) || 0;
+            if (value > 0) {
+                mode = 'attack';
+                label = 'ATTACK';
+                attackerIsP1 = isP1Turn;
+                breakdown = 'hits next turn';
+            }
+        }
+        if (s.gameOver) {
+            mode = 'idle';
+            label = '';
+            breakdown = '';
+            attackerIsP1 = null;
+        }
+
+        const container = document.getElementById('central-attack-container');
+        const atkEl = document.getElementById('central-atk');
+        if (!container || !atkEl) return;
+        atkEl.textContent = value;
+        document.getElementById('central-atk-label').textContent = label;
+        document.getElementById('central-atk-breakdown').textContent = breakdown;
+        container.classList.remove('mode-idle', 'mode-attack', 'mode-incoming', 'mode-assign', 'toward-p1', 'toward-p2');
+        container.classList.add(`mode-${mode}`);
+        if (attackerIsP1 !== null) container.classList.add(attackerIsP1 ? 'toward-p2' : 'toward-p1');
+        container.title = label ? `${label}: ${value}${breakdown ? ' (' + breakdown + ')' : ''}` : 'Attack';
     }
 
     updateResourceDisplay(id, checkVal, isHp = false) {
@@ -1232,6 +1320,7 @@ class PrismataWeb {
     renderUnits(container, units, isFriendly) {
         // Remember where every card was, so the rebuilt cards can animate from there
         const prevCards = this._snapshotCards(container);
+        this._hideActionChip(); // its card is about to be replaced
         container.innerHTML = '';
         const isP1Units = container.id === 'p1-units';
 
@@ -1360,6 +1449,8 @@ class PrismataWeb {
                     if (window.innerWidth <= 768) return; // Disable hover on mobile
                     e.stopPropagation();
                     this.handleUnitMouseEnter(unit, e);
+                    // What a click does: the card's own hint, or its column's (breach targets)
+                    this._showActionChip(card.dataset.hint ? card : column);
 
                     // Lift effect
                     if (card.classList.contains('interactive')) {
@@ -1371,6 +1462,7 @@ class PrismataWeb {
                     if (window.innerWidth <= 768) return;
                     e.stopPropagation();
                     this.handleUnitMouseLeave();
+                    this._hideActionChip();
                     card.classList.remove('column-focus');
                 }, { passive: true });
 
@@ -1451,6 +1543,10 @@ class PrismataWeb {
                     };
                 }
 
+                // What a click on this card does (chip on hover, desktop)
+                const hint = this._cardHint(unit, { isFriendly, isInteractive, canActInAction, canBlockInBlock });
+                if (hint) card.dataset.hint = hint;
+
                 // Mark for rotation animation (Top Card)
                 if (indexInType === rotationIndex) {
                     card.classList.add('rotation-target');
@@ -1464,6 +1560,16 @@ class PrismataWeb {
 
                 column.appendChild(card);
             });
+
+            // Stack size, so overlapping cards don't need counting
+            const stack = unitsByType[type];
+            if (stack.length >= 2) {
+                const readyCount = stack.filter(u => !u.exhausted).length;
+                const stackBadge = document.createElement('div');
+                stackBadge.className = 'stack-count';
+                stackBadge.textContent = readyCount < stack.length ? `×${stack.length} · ${readyCount} ready` : `×${stack.length}`;
+                column.appendChild(stackBadge);
+            }
 
             // Check if column is vulnerable in breach
             if (!isFriendly && this.state.phase === 'Breach') {
@@ -1504,8 +1610,16 @@ class PrismataWeb {
                     colMarker.innerHTML = `${hpNeededToKill} ⚔️`;
 
                     // Hover effect listener onto the column itself
-                    column.addEventListener('mouseenter', () => { column.style.transform = 'translateY(-5px)'; });
-                    column.addEventListener('mouseleave', () => { column.style.transform = ''; });
+                    const targetName = topUnitInColumn.type.charAt(0).toUpperCase() + topUnitInColumn.type.slice(1);
+                    column.dataset.hint = `Destroy ${targetName}: ${hpNeededToKill}⚔️`;
+                    column.addEventListener('mouseenter', () => {
+                        column.style.transform = 'translateY(-5px)';
+                        if (window.innerWidth > 768) this._showActionChip(column);
+                    });
+                    column.addEventListener('mouseleave', () => {
+                        column.style.transform = '';
+                        this._hideActionChip();
+                    });
 
                     column.appendChild(colMarker);
                     column.onclick = (e) => {
@@ -1609,24 +1723,194 @@ class PrismataWeb {
         setTimeout(() => el.remove(), 950);
     }
 
+    // Label for what clicking a card will do right now ('' when nothing)
+    _cardHint(unit, { isFriendly, isInteractive, canActInAction, canBlockInBlock }) {
+        if (!isFriendly || !isInteractive || !this._isMyTurn()) return '';
+        if (canBlockInBlock) return unit.type === 'barrier' ? `Block: 🛡️${unit.blk} · breaks` : `Block: 🛡️${unit.blk}`;
+        if (!canActInAction) return '';
+        if (unit.exhausted && unit.usedThisTurn) return unit.attacking ? 'Cancel attack' : 'Undo';
+        if (unit.exhausted) return unit.type === 'wall' ? 'Repair: −1🔋' : '';
+        if (unit.atk > 0 && unit.type !== 'repeater') {
+            if (unit.attacking) return 'Already attacking';
+            const cost = unit.atkCost > 0 ? `−${unit.atkCost}🔋 → ` : '';
+            const extra = unit.type === 'volatile' ? ' · self-destructs' : (unit.atkCost > 0 ? '' : ' (free)');
+            return `Attack: ${cost}⚔️${unit.atk}${extra}`;
+        }
+        switch (unit.type) {
+            case 'energizer': return 'Tap: +1🔋';
+            case 'miner': return 'Tap: −1🔋 → +1🪙';
+            case 'repeater': return 'Ready a unit: −1🔋';
+            case 'wall': return 'Ready to block';
+            case 'barrier': return 'Blocks the next attack';
+        }
+        return '';
+    }
+
+    // Small floating label above a hovered card/column saying what a click does
+    _showActionChip(el) {
+        const text = el && el.dataset ? el.dataset.hint : '';
+        if (!text) {
+            this._hideActionChip();
+            return;
+        }
+        let chip = document.getElementById('action-chip');
+        if (!chip) {
+            chip = document.createElement('div');
+            chip.id = 'action-chip';
+            chip.className = 'action-chip';
+            document.body.appendChild(chip);
+        }
+        chip.textContent = text;
+        const r = el.getBoundingClientRect();
+        chip.style.left = `${r.left + r.width / 2}px`;
+        chip.style.top = `${r.top}px`;
+        chip.classList.add('visible');
+    }
+
+    _hideActionChip() {
+        const chip = document.getElementById('action-chip');
+        if (chip) chip.classList.remove('visible');
+    }
+
+    // Short, player-facing version of an engine refusal message
+    _shortReason(msg) {
+        const m = String(msg || '');
+        const rules = [
+            [/Not enough Gold to undo/i, 'Needs 🪙 to undo'],
+            [/Not enough Energy to undo/i, 'Needs 🔋 to undo'],
+            [/already been used/i, "Can't undo now"],
+            [/cannot be undone|not used this turn/i, "Can't undo"],
+            [/already prepared/i, 'Already attacking'],
+            [/already exhausted/i, 'Already used'],
+            [/already ready/i, 'Already ready'],
+            [/no usable ability/i, 'No ability to use'],
+            [/about to be destroyed/i, 'Being destroyed'],
+            [/Cannot overcharge itself/i, "Can't target itself"],
+            [/Not enough damage/i, 'Not enough ⚔️'],
+            [/energy/i, 'Needs 1🔋'],
+            [/afford|gold/i, 'Not enough 🪙']
+        ];
+        const hit = rules.find(([re]) => re.test(m));
+        return hit ? hit[1] : m.slice(0, 28);
+    }
+
+    // "Why not?" popup at the element a failed click came from
+    _warnAt(el, msg) {
+        if (!el || !el.getBoundingClientRect) return;
+        const r = el.getBoundingClientRect();
+        if (!r.width && !r.height) return;
+        this._spawnFloatText(r.left + r.width / 2, r.top + Math.min(40, r.height / 3), this._shortReason(msg), 'warn');
+    }
+
+    // "Thinking…" dots on the AI's name plate during its pauses
+    _setAIThinking(on) {
+        this.aiThinking = !!on;
+        const plate = document.querySelector('#opponent-area .player-stats-bar');
+        if (plate) plate.classList.toggle('thinking', this.aiThinking);
+        if (this.state) this.updateTurnHint();
+    }
+
+    // Brief glow on the card(s) an AI step just used, so its turn is easy to follow
+    _flashAIStep(step) {
+        if (!step) return;
+        let cards = [];
+        if (step.type === 'use_ability' && step.unit) {
+            cards = Array.from(document.querySelectorAll(`#p2-units .unit-card[data-type="${step.unit}"][data-unit-number="${step.number}"]`));
+        } else if (step.type === 'block' && step.unit) {
+            const blockers = document.querySelectorAll(`#p2-units .unit-card.blocking[data-type="${step.unit}"]`);
+            if (blockers.length) cards = [blockers[blockers.length - 1]];
+        } else if (step.type === 'attack') {
+            cards = Array.from(document.querySelectorAll('#p2-units .unit-card.attacking'));
+        }
+        cards.forEach(card => {
+            card.classList.remove('ai-acted');
+            void card.offsetWidth; // restart the glow
+            card.classList.add('ai-acted');
+        });
+    }
+
+    // Whether the local human is the one acting right now (in Breach that's the attacker)
+    _isMyTurn() {
+        if (this.gameMode === 'HOTSEAT') return true; // Both players share this screen
+        if (this.gameMode === 'ONLINE') return this.isHost ? this.isP1Turn() : !this.isP1Turn();
+        return this.isP1Turn(); // AI mode: the human is always seat 1
+    }
+
+    // The local player's seat ('p1'/'p2'), or null in hotseat where both seats are local
+    _localSeat() {
+        if (this.gameMode === 'HOTSEAT') return null;
+        if (this.gameMode === 'ONLINE') return this.isHost ? 'p1' : 'p2';
+        return 'p1';
+    }
+
+    // True when the acting player has nothing useful left this Action phase (drives the END TURN pulse)
+    _hasNothingToDo() {
+        const s = this.state;
+        if (!s || s.phase !== 'Action' || s.gameOver || this.isTutorial || !this._isMyTurn()) return false;
+        const me = this.isP1Turn() ? s.p1 : s.p2;
+        const ready = me.units.filter(u => u.isAlive && !u.exhausted);
+        const energy = me.energy;
+        if (ready.some(u => u.type === 'energizer')) return false;
+        if (energy >= 1 && ready.some(u => u.type === 'miner')) return false;
+        if (ready.some(u => (u.type === 'striker' || u.type === 'volatile') && !u.attacking && energy >= u.atkCost)) return false;
+        if (energy >= 1 && ready.some(u => u.type === 'repeater') && me.units.some(u => u.isAlive && u.exhausted)) return false;
+        if (energy >= 1 && me.units.some(u => u.type === 'wall' && u.exhausted)) return false;
+        // Anything left to buy? (second purchase costs +1 energy)
+        if (me.purchased < 2 && energy >= (me.purchased === 1 ? 1 : 0)) {
+            const lifetime = me.lifetime || {};
+            if (SHOP_UNITS.some(u => (lifetime[u.id] || 0) < u.cap && me.gold >= u.cost)) return false;
+        }
+        return true; // Guards are ignored: attacking with one is optional
+    }
+
+    // One-line "what now" guidance next to the action buttons
+    updateTurnHint() {
+        const el = document.getElementById('turn-hint');
+        if (!el) return;
+        const text = this._turnHint();
+        el.textContent = text;
+        el.classList.toggle('hidden', !text);
+    }
+
+    _turnHint() {
+        const s = this.state;
+        if (!s || s.gameOver || this.isTutorial) return '';
+        const combat = s.combat || { atk: 0, blk: 0, assigned: 0 };
+        const actorName = s.currentPlayer;
+        const prefix = this.gameMode === 'HOTSEAT' ? `${actorName}: ` : '';
+
+        if (!this._isMyTurn()) {
+            if (this.gameMode === 'AI') {
+                if (s.phase === 'Block') return 'AI is choosing blockers…';
+                return this.aiThinking ? 'AI is thinking…' : 'AI is playing its turn…';
+            }
+            if (s.phase === 'Breach') return `${actorName} is assigning damage…`;
+            if (s.phase === 'Block') return `${actorName} is choosing blockers…`;
+            return `Waiting for ${actorName}…`;
+        }
+
+        if (s.phase === 'Block') {
+            const me = this.isP1Turn() ? s.p1 : s.p2;
+            const left = Math.max(0, combat.atk - combat.blk);
+            const canBlock = me.units.some(u => u.isAlive && !u.exhausted && u.blk > 0 && !u.blocking);
+            if (left === 0) return `${prefix}Attack fully blocked. Press FINISH BLOCKING.`;
+            if (!canBlock) return `${prefix}Incoming ⚔️${left} and no blockers ready. Press FINISH BLOCKING.`;
+            return `${prefix}Incoming ⚔️${left}. Click units to block, then FINISH BLOCKING.`;
+        }
+        if (s.phase === 'Breach') {
+            const left = Math.max(0, combat.atk - combat.blk - combat.assigned);
+            return `${prefix}Assign ${left}⚔️: click a glowing enemy unit, or ATTACK BASE.`;
+        }
+        if (this._hasNothingToDo()) return `${prefix}Nothing left to do. Press END TURN.`;
+        return `${prefix}Tap units for 🔋/🪙, shop, then END TURN.`;
+    }
+
     updateActionButtons() {
         // In AI mode, we restrict actions to Player 1.
         // In HOTSEAT mode, we allow actions for whoever is the current player.
         // In ONLINE mode, only the local player's turn is interactive.
-
-        let isMyTurn = false;
+        const isMyTurn = this._isMyTurn();
         const phase = this.state.phase;
-
-        if (this.gameMode === 'HOTSEAT') {
-            // In Hotseat, it's always "my turn" if I am the active human
-            isMyTurn = true;
-        } else if (this.gameMode === 'ONLINE') {
-            // In Online mode, check if it's the local player's turn
-            isMyTurn = this.isHost ? this.isP1Turn() : !this.isP1Turn();
-        } else {
-            // In AI Mode, only Player 1 is human
-            isMyTurn = this.isP1Turn();
-        }
 
         // Special case for Breach: Attacker acts, which might be P1 even if defender is current?
         // Actually engine logic usually switches "currentPlayer" context.
@@ -1670,6 +1954,21 @@ class PrismataWeb {
             this.elements.btnEnd.textContent = "END TURN";
             this.elements.btnEnd.classList.remove('important');
         }
+
+        // Buys left this turn (the second purchase costs +1 energy), on the SHOP button
+        const chip = document.getElementById('buys-chip');
+        if (chip) {
+            const active = this.isP1Turn() ? this.state.p1 : this.state.p2;
+            const left = Math.max(0, 2 - active.purchased);
+            const shopOpen = !this.elements.shopModal.classList.contains('hidden');
+            const showChip = isMyTurn && phase === 'Action' && !this.state.gameOver && !shopOpen;
+            chip.textContent = left === 2 ? '2 left' : (left === 1 ? '1 left · +1🔋' : '0 left');
+            chip.classList.toggle('hidden', !showChip);
+            chip.classList.toggle('none-left', left === 0);
+        }
+
+        // Gentle glow on END TURN when there's nothing useful left to do
+        this.elements.btnEnd.classList.toggle('idle-pulse', !locked && this._hasNothingToDo());
     }
 
     // -- Game Actions --
@@ -1716,6 +2015,7 @@ class PrismataWeb {
                 } else {
                     this.log(`Could not undo: ${result.msg}`, 'important');
                     this.sounds.play('ERROR');
+                    this._warnAt(columnElement && (columnElement.querySelector(`.unit-card[data-unit-number="${unitNumber}"]`) || columnElement), result.msg);
                 }
                 return;
             }
@@ -1760,6 +2060,7 @@ class PrismataWeb {
                 } else {
                     this.log(`Error: ${result.msg}`, 'important');
                     this.sounds.play('ERROR');
+                    this._warnAt(animateCard || columnElement, result.msg);
 
                     if (result.msg.includes("energy")) {
                         const energyEl = document.getElementById(isP1Turn ? 'p1-energy' : 'p2-energy');
@@ -1799,6 +2100,7 @@ class PrismataWeb {
                 if (pyEnergy < 1) {
                     this.log("Not enough energy to use Repeater (needs 1🔋)", "important");
                     this.sounds.play('ERROR');
+                    this._warnAt(animateCard || columnElement, 'Not enough energy');
                     const energyEl = document.getElementById(isP1Turn ? 'p1-energy' : 'p2-energy');
                     if (energyEl && energyEl.parentElement) {
                         energyEl.parentElement.classList.add('error-bump');
@@ -1967,6 +2269,7 @@ class PrismataWeb {
             }
             this.log(result.msg, 'important');
             this.sounds.play('ERROR');
+            this._warnAt(document.getElementById(`${this.isP1Turn() ? 'p1' : 'p2'}-units-${targetType}-col`), result.msg);
         }
 
         this.syncState();
@@ -2095,6 +2398,7 @@ class PrismataWeb {
             // Error handling
             this.log(`Error: ${result.msg}`, 'important');
             this.sounds.play('ERROR');
+            this._warnAt(column, result.msg);
 
             if (column) {
                 // Shake animation
@@ -2264,7 +2568,10 @@ class PrismataWeb {
                     this.log(`🚨 INCOMING ATTACK! ${incomingAtk} damage aimed at AI.`, "important");
 
                     // Wait for banner + extra buffer
-                    if (!(await this._waitSession(4800, session))) return;
+                    this._setAIThinking(true);
+                    const stillActive = await this._waitSession(4800, session);
+                    if (!stillActive) return;
+                    this._setAIThinking(false);
                     if (!(await this._runAIDefense(session))) return;
 
                     this.syncState();
@@ -2338,6 +2645,7 @@ class PrismataWeb {
 
                 this.syncState();
                 this.updateUI();
+                this._flashAIStep(stepData);
 
                 if (!(await this._waitSession(stepDelayMs, session))) return false;
             }
@@ -2359,7 +2667,10 @@ class PrismataWeb {
     // Returns false if the game ended or was abandoned meanwhile.
     async _runAIActionTurn(session) {
         this.log("AI Opponent is thinking...", "system");
-        if (!(await this._waitSession(4000, session))) return false;
+        this._setAIThinking(true);
+        const stillActive = await this._waitSession(4000, session);
+        if (!stillActive) return false;
+        this._setAIThinking(false);
         if (this.state.gameOver) return false;
 
         try {
@@ -2373,9 +2684,9 @@ class PrismataWeb {
             try {
                 for (let i = 0; i < numSteps; i++) {
                     const step = stepsProxy.get(i);
-                    const stepType = step.get('type');
+                    const stepData = step.toJs({ dict_converter: Object.fromEntries });
                     step.destroy();
-                    if (stepType === 'end') break;
+                    if (stepData.type === 'end') break;
 
                     const label = this.pyodide.runPython(`ai.execute_step(game, engine, global_steps_py[${i}])`);
 
@@ -2390,6 +2701,7 @@ class PrismataWeb {
 
                     this.syncState();
                     this.updateUI();
+                    this._flashAIStep(stepData);
 
                     // Trigger shine if a unit was bought
                     const boughtMatch = label.match(/Bought\s+(\w+)/i);
@@ -2523,6 +2835,7 @@ class PrismataWeb {
         } else {
             if (msg) this.log(msg, 'important');
             this.sounds.play('ERROR');
+            this._warnAt(cardElement, msg);
 
             if (msg && typeof msg === 'string' && msg.includes("energy")) {
                 const isP1Turn = this.isP1Turn();
@@ -2559,17 +2872,7 @@ class PrismataWeb {
     }
 
     showShop() {
-        // Define base costs as integers for sorting
-        let shopUnits = [
-            { id: 'barrier', name: 'Barrier', cost: 1, energyCost: 0, desc: this.unitDescriptions['barrier'] },
-            { id: 'miner', name: 'Miner', cost: 2, energyCost: 0, desc: this.unitDescriptions['miner'] },
-            { id: 'energizer', name: 'Energizer', cost: 2, energyCost: 0, desc: this.unitDescriptions['energizer'] },
-            { id: 'striker', name: 'Striker', cost: 3, energyCost: 0, desc: this.unitDescriptions['striker'] },
-            { id: 'guard', name: 'Guard', cost: 3, energyCost: 0, desc: this.unitDescriptions['guard'] },
-            { id: 'wall', name: 'Wall', cost: 3, energyCost: 0, desc: this.unitDescriptions['wall'] },
-            { id: 'repeater', name: 'Repeater', cost: 3, energyCost: 0, desc: this.unitDescriptions['repeater'] },
-            { id: 'volatile', name: 'Volatile', cost: 4, energyCost: 0, desc: this.unitDescriptions['volatile'] }
-        ];
+        let shopUnits = SHOP_UNITS.map(u => ({ ...u, energyCost: 0, desc: this.unitDescriptions[u.id] }));
 
         if (this.isTutorial) {
             // Tutorial Shop: Energizer, Miner, Striker only
@@ -2601,23 +2904,25 @@ class PrismataWeb {
             let affordable = true;
             let reason = "";
 
-            let limitMax = u.id === 'wall' ? 3 : 5;
+            const limitMax = u.cap;
             let currentAmount = 0;
             if (player && player.lifetime && player.lifetime[u.id]) {
                 currentAmount = player.lifetime[u.id];
             }
 
+            // Say exactly what's missing, so a greyed-out unit isn't a mystery
             if (currentAmount >= limitMax) {
                 affordable = false;
-                reason = "Max limit reached";
-                // Optionally gray out more aggressively, but existing disabled styles should handle it.
+                reason = `Max ${limitMax} owned`;
             } else if (unitsBought >= 2) {
                 affordable = false;
-                reason = "Max 2 units per turn";
+                reason = "2 buys used this turn";
             } else if (currentGold < u.cost) {
                 affordable = false;
+                reason = `Need ${u.cost - currentGold} more 🪙`;
             } else if (currentEnergy < totalEnergyReq) {
                 affordable = false;
+                reason = `Need ${totalEnergyReq - currentEnergy} more 🔋 (2nd buy)`;
             }
 
             if (this.isTutorial && this.tutorialStep === 5 && u.id !== 'energizer') {
@@ -2632,10 +2937,10 @@ class PrismataWeb {
 
             if (!affordable) {
                 item.classList.add('disabled');
-                item.style.opacity = '0.5';
                 item.onclick = (e) => {
                     e.stopPropagation();
                     this.sounds.play('ERROR');
+                    if (reason) this._warnAt(item, reason);
                 };
             } else {
                 // cursor removed
@@ -2667,12 +2972,13 @@ class PrismataWeb {
             progressHtml += '</div>';
 
             item.innerHTML = `
+                <div class="shop-item-art" style="background-image: url('${imgUrl}')"></div>
                 <div class="shop-item-info">
                    <div class="shop-item-main">
-                      <span class="unit-cost">${costDisplay}</span>
                       <span class="unit-name">${u.name}</span>
-                       ${!affordable && reason ? `<span class="unit-xs-reason">${reason}</span>` : ''}
+                      <span class="unit-cost">${costDisplay}</span>
                    </div>
+                   ${!affordable && reason ? `<span class="unit-xs-reason">${reason}</span>` : ''}
                 </div>
                 ${progressHtml}
             `;
@@ -2700,6 +3006,7 @@ class PrismataWeb {
 
         this.sounds.play('SHOP_OPEN');
         this.elements.shopModal.classList.remove('hidden');
+        this.updateActionButtons(); // hides the buys chip while the shop is open
 
         let container = this.elements.shopModal.querySelector('.modal-content');
         if (container) {
@@ -2716,7 +3023,7 @@ class PrismataWeb {
 
             // Swap action bar: End Turn -> BUY, SHOP -> EXIT SHOP
             this.elements.btnEnd.style.display = 'none';
-            this.elements.btnBuy.textContent = 'EXIT SHOP';
+            this.elements.btnBuy.querySelector('.btn-label').textContent = 'EXIT SHOP';
             this.elements.btnBuy.onclick = (e) => {
                 e.stopPropagation();
                 this.hideShop();
@@ -2870,15 +3177,17 @@ class PrismataWeb {
             container.classList.add('shop-modal-close-anim');
             setTimeout(() => {
                 this.elements.shopModal.classList.add('hidden');
+                if (this.state) this.updateActionButtons(); // bring the buys chip back
             }, 200);
         } else {
             this.elements.shopModal.classList.add('hidden');
+            if (this.state) this.updateActionButtons();
         }
 
         // Restore mobile action bar
         if (window.innerWidth <= 768) {
             this.elements.btnEnd.style.display = '';
-            this.elements.btnBuy.textContent = 'SHOP';
+            this.elements.btnBuy.querySelector('.btn-label').textContent = 'SHOP';
             this.elements.btnBuy.onclick = () => {
                 if (this.isTurnTransitioning || this.processingTurn) return;
                 this.handleBuy();

@@ -2682,7 +2682,9 @@ body.lockout .unit-card.interactive {
     position: relative;
     z-index: 10006 !important;
     box-shadow: 0 0 35px rgba(255, 215, 0, 0.6) !important;
-    border: 5px solid #FFD700 !important;
+    /* An outline, not a border: a border widened highlighted columns and wrapped the row on phones */
+    outline: 5px solid #FFD700 !important;
+    outline-offset: -1px;
     border-radius: var(--radius-sm);
     pointer-events: auto !important;
 }
@@ -2702,5 +2704,550 @@ body.lockout .unit-card.interactive {
 
     100% {
         box-shadow: 0 0 10px 2px rgba(255, 215, 0, 0.4);
+    }
+}
+
+
+/* =====================================================================
+   UI pass 2: guidance, readability, flow
+   (kept at the end so it layers over the base rules; mobile variants follow in their own block)
+   ===================================================================== */
+
+/* ---- Phase tracker (header) ---- */
+.stat-badge.phase #phase-name {
+    display: none;
+}
+
+.phase-steps {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.phase-steps li {
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    color: var(--text-dim);
+    opacity: 0.55;
+    font-size: calc(1rem * var(--ui-scale));
+    transition: all 0.25s ease;
+}
+
+.phase-steps li + li::before {
+    content: '›';
+    margin-right: 0.6rem;
+    margin-left: -0.35rem;
+    color: var(--text-dim);
+    opacity: 0.6;
+}
+
+.phase-steps li.done {
+    opacity: 0.8;
+}
+
+.phase-steps li.current {
+    opacity: 1;
+    color: #0b1020;
+    background: var(--accent-primary);
+    box-shadow: 0 0 12px rgba(0, 242, 255, 0.45);
+    font-weight: 800;
+}
+
+/* On mobile the phase badge is moved into the separator: show just the phase name there */
+.player-separator .phase-steps {
+    display: none;
+}
+
+.player-separator .stat-badge.phase #phase-name {
+    display: inline;
+}
+
+/* ---- "What now" hint beside the action buttons ---- */
+.turn-hint {
+    flex: 0 1 auto;
+    max-width: 44%;
+    text-align: right;
+    font-size: calc(0.98rem * var(--ui-scale));
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--text-main);
+    opacity: 0.92;
+}
+
+.turn-hint.hidden {
+    display: none;
+}
+
+/* ---- Attack meter ---- */
+.central-attack {
+    overflow: visible;
+}
+
+.central-attack .atk-label {
+    font-size: calc(0.55rem * var(--ui-scale));
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    line-height: 1;
+    min-height: calc(0.55rem * var(--ui-scale));
+    opacity: 0.9;
+}
+
+.central-attack .atk-arrow {
+    position: absolute;
+    top: 50%;
+    font-size: calc(1.4rem * var(--ui-scale));
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    text-shadow: 0 0 8px currentColor;
+}
+
+/* Desktop: seat 1 is on the left, seat 2 on the right */
+.central-attack.toward-p2 .atk-arrow {
+    opacity: 1;
+    left: 100%;
+    margin-left: 4px;
+    translate: 0 -50%;
+}
+
+.central-attack.toward-p1 .atk-arrow {
+    opacity: 1;
+    right: 100%;
+    margin-right: 4px;
+    translate: 0 -50%;
+    rotate: 180deg;
+}
+
+.central-attack.mode-idle {
+    border-color: var(--glass-border);
+    box-shadow: none;
+    opacity: 0.75;
+}
+
+.central-attack.mode-attack {
+    border-color: #ffb347;
+    box-shadow: 0 0 16px rgba(255, 179, 71, 0.45);
+    color: #ffe6c2;
+}
+
+.central-attack.mode-attack .atk-arrow {
+    color: #ffb347;
+}
+
+.central-attack.mode-incoming,
+.central-attack.mode-assign {
+    border-color: var(--accent-red);
+    background-color: rgba(120, 20, 32, 0.92) !important;
+    animation: danger-pulse 1.2s ease-in-out infinite;
+}
+
+.central-attack.mode-incoming .atk-arrow,
+.central-attack.mode-assign .atk-arrow {
+    color: #ff6b6b;
+}
+
+.atk-breakdown {
+    margin-top: 0.55rem;
+    width: max-content;
+    max-width: calc(120px * var(--ui-scale));
+    font-size: calc(0.72rem * var(--ui-scale));
+    line-height: 1.25;
+    text-align: center;
+    color: var(--text-dim);
+    position: relative;
+    z-index: 11;
+}
+
+/* ---- Name plate: name row, YOU tag, health bar ---- */
+.player-identity {
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.player-area.opponent .player-identity {
+    align-items: flex-end;
+}
+
+.name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.player-area.opponent .name-row {
+    flex-direction: row-reverse;
+}
+
+.you-tag {
+    font-size: calc(0.62rem * var(--ui-scale));
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: var(--accent-primary);
+    background: rgba(0, 242, 255, 0.14);
+    border: 1px solid rgba(0, 242, 255, 0.5);
+    line-height: 1.2;
+}
+
+.you-tag.hidden {
+    display: none;
+}
+
+.hp-bar {
+    display: flex;
+    gap: 2px;
+}
+
+/* The opponent's plate is mirrored, so its bar drains from the other end */
+.player-area.opponent .hp-bar {
+    flex-direction: row-reverse;
+}
+
+.hp-pip {
+    width: calc(10px * var(--ui-scale));
+    height: calc(6px * var(--ui-scale));
+    border-radius: 2px;
+    background: #ff4d6d;
+    box-shadow: 0 0 4px rgba(255, 77, 109, 0.5);
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+.hp-pip.lost {
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: none;
+}
+
+.hp-pip.just-lost {
+    animation: pip-lost 0.7s ease-out;
+}
+
+@keyframes pip-lost {
+    0% {
+        background: #fff;
+        box-shadow: 0 0 10px #ff4d6d;
+        transform: scaleY(1.8);
+    }
+
+    100% {
+        transform: scaleY(1);
+    }
+}
+
+/* Seat colours: the opponent's plate glows purple on its turn (yours stays cyan) */
+.player-area.them .player-stats-bar.active-player {
+    background: linear-gradient(135deg, rgba(180, 77, 255, 0.16), rgba(180, 77, 255, 0.05));
+    border-color: #b44dff;
+    box-shadow: 0 0 20px rgba(180, 77, 255, 0.4);
+}
+
+/* ---- Stack count above a column of 2+ cards ---- */
+.stack-count {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    translate: -50% -55%;
+    z-index: 150;
+    pointer-events: none;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(8, 10, 20, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: var(--text-main);
+    font-size: calc(0.78rem * var(--ui-scale));
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* ---- Hover action chip ---- */
+.action-chip {
+    position: fixed;
+    z-index: 3500;
+    pointer-events: none;
+    translate: -50% calc(-100% - 8px);
+    padding: 5px 10px;
+    border-radius: 8px;
+    background: rgba(8, 10, 22, 0.94);
+    border: 1px solid rgba(0, 242, 255, 0.45);
+    color: #e8fbff;
+    font-size: calc(0.85rem * var(--ui-scale));
+    font-weight: 700;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.action-chip.visible {
+    opacity: 1;
+}
+
+/* ---- Buys left, inside the SHOP button ---- */
+.buys-chip {
+    display: inline-block;
+    margin-left: 0.55rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    vertical-align: middle;
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #9fe4ff;
+    background: rgba(8, 30, 50, 0.85);
+    border: 1px solid rgba(0, 242, 255, 0.55);
+}
+
+.buys-chip.none-left {
+    color: #ffb3bd;
+    background: rgba(58, 16, 22, 0.85);
+    border-color: rgba(255, 90, 110, 0.6);
+}
+
+.buys-chip.hidden {
+    display: none;
+}
+
+/* ---- END TURN glow when nothing is left to do ---- */
+.action-btn.idle-pulse {
+    animation: idle-glow 1.8s ease-in-out infinite;
+}
+
+@keyframes idle-glow {
+    0%,
+    100% {
+        box-shadow: 0 0 0 rgba(0, 242, 255, 0);
+    }
+
+    50% {
+        box-shadow: 0 0 18px 2px rgba(0, 242, 255, 0.55);
+    }
+}
+
+/* ---- Lighter turn banner: a slim ribbon at the top of the board ---- */
+#turn-banner {
+    top: calc(0.9rem * var(--ui-scale));
+    transform: translateX(-50%);
+    padding: 0.55rem 2.2rem;
+    border-radius: 999px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 24px rgba(0, 242, 255, 0.25);
+    animation: ribbonIn 1.2s ease-in-out forwards;
+}
+
+#turn-banner h1 {
+    font-size: calc(1.5rem * var(--ui-scale));
+    letter-spacing: 3px;
+}
+
+#turn-banner.them {
+    border-color: #b44dff;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 24px rgba(180, 77, 255, 0.3);
+}
+
+#turn-banner.them h1 {
+    background: linear-gradient(135deg, #fff, #c77dff);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+@keyframes ribbonIn {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -140%);
+    }
+
+    18% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    80% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -60%);
+    }
+}
+
+/* ---- Shop: art, cost and a reason line on every unit ---- */
+.shop-list-item.disabled {
+    opacity: 0.6;
+}
+
+.shop-list-item.disabled .shop-item-art {
+    filter: grayscale(0.9) brightness(0.6);
+}
+
+.shop-item-art {
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    flex-shrink: 0;
+}
+
+.shop-item-info .unit-xs-reason {
+    margin-left: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #ffb14a;
+}
+
+/* Keep the reason readable: only the art goes grey on an unaffordable unit */
+.shop-list-item.disabled .shop-item-info {
+    filter: none;
+}
+
+/* Desktop: the hint takes the free middle of the action bar, right next to the buttons */
+@media (min-width: 769px) {
+    .main-buttons {
+        flex: 0 0 auto;
+    }
+
+    .turn-hint {
+        flex: 1 1 0;
+        max-width: none;
+    }
+}
+
+@media (min-width: 769px) {
+    #shop-modal .modal-content {
+        width: calc(820px * var(--ui-scale));
+    }
+
+    .shop-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: calc(0.8rem * var(--ui-scale));
+    }
+
+    /* Tiles: art on top, name + cost, reason, then the lifetime-limit pips */
+    .shop-list-item {
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        height: auto;
+        padding: calc(0.6rem * var(--ui-scale));
+        gap: calc(0.45rem * var(--ui-scale));
+    }
+
+    .shop-list-item:hover {
+        transform: translateY(-4px);
+        background: rgba(0, 242, 255, 0.1);
+        color: inherit;
+        border-color: rgba(0, 242, 255, 0.6);
+    }
+
+    .shop-list-item.disabled:hover {
+        transform: none;
+        background: rgba(255, 255, 255, 0.05);
+        border-color: var(--glass-border);
+    }
+
+    .shop-item-art {
+        width: 100%;
+        height: calc(180px * var(--ui-scale));
+    }
+
+    .shop-item-main {
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .shop-item-progress-bar {
+        opacity: 1;
+        margin: 0 auto;
+        padding: 4px 6px;
+    }
+
+    .progress-segment {
+        height: 8px;
+    }
+}
+
+/* ---- Mobile variants ---- */
+@media (max-width: 768px) {
+    .turn-hint {
+        order: -1;
+        flex-basis: 100%;
+        max-width: none;
+        text-align: center;
+        font-size: 0.78rem;
+    }
+
+    .action-group {
+        flex-wrap: wrap;
+        row-gap: 0.4rem;
+    }
+
+    /* The meter overlaps both plates on mobile; keep it (and its label) on top */
+    .central-attack {
+        z-index: 12;
+    }
+
+    /* Seat 2 is at the top on mobile, seat 1 at the bottom: arrow beside the meter, pointing up/down */
+    .central-attack.toward-p2 .atk-arrow,
+    .central-attack.toward-p1 .atk-arrow {
+        top: 50%;
+        right: auto;
+        left: 100%;
+        margin: 0 0 0 3px;
+        translate: 0 -50%;
+    }
+
+    .central-attack.toward-p2 .atk-arrow {
+        rotate: -90deg;
+    }
+
+    .central-attack.toward-p1 .atk-arrow {
+        rotate: 90deg;
+    }
+
+    .block-badge {
+        top: 4px;
+        padding: 2px 6px;
+        font-size: 0.68rem;
+    }
+
+    .central-attack .atk-label {
+        font-size: 0.45rem;
+        letter-spacing: 1px;
+    }
+
+    .atk-breakdown {
+        display: none;
+    }
+
+    .hp-pip {
+        width: 7px;
+        height: 5px;
+    }
+
+    .you-tag {
+        font-size: 0.55rem;
+        padding: 1px 5px;
+    }
+
+    .shop-item-art {
+        width: 34px;
+        height: 48px;
+        border-radius: 4px;
+    }
+
+    /* Pinned inside the button so it doesn't widen SHOP (and squeeze END TURN onto two lines) */
+    .buys-chip {
+        position: absolute;
+        top: 5px;
+        right: 8px;
+        margin-left: 0;
+        font-size: 0.56rem;
+        padding: 1px 6px;
     }
 }
