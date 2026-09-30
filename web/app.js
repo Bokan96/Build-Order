@@ -17,6 +17,7 @@ class PrismataWeb {
         this.processingTurn = false; // True while an end-turn (incl. AI turn) is being resolved
         this.gameSession = 0; // Bumped on every new/abandoned game so stale async AI loops stop
         this.endGameShown = false;
+        this._lastHp = {}; // Base HP seen per seat, for damage popups
         this.hasInteracted = false;
         this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" banner
         this.isTutorial = false;
@@ -837,6 +838,7 @@ class PrismataWeb {
         this._abandonGame();
         this.endGameShown = false;
         this.onlineGameReady = this.gameMode === 'ONLINE';
+        this._lastHp = {}; // Base HP seen per seat, for damage popups
 
         // Initialize GameState and GameEngine instances in Python.
         // Names come from user input / the remote peer, so they're passed as globals, never spliced into code.
@@ -1106,6 +1108,12 @@ class PrismataWeb {
         this.renderUnits(this.elements.p1Units, this.state.p1.units, p1IsFriendly);
         this.renderUnits(this.elements.p2Units, this.state.p2.units, p2IsFriendly);
 
+        // Dim the side that isn't acting. In Breach the attacker clicks the defender's units, so those stay bright.
+        const activeIsP1 = this.state.phase === 'Breach' ? !isP1Turn : isP1Turn;
+        const dimSides = !this.state.gameOver;
+        document.getElementById('player-area').classList.toggle('inactive-side', dimSides && !activeIsP1);
+        document.getElementById('opponent-area').classList.toggle('inactive-side', dimSides && activeIsP1);
+
         // Update Central Attack
         this.updateCentralAttack();
 
@@ -1120,6 +1128,14 @@ class PrismataWeb {
     }
 
     updatePlayerStats(player, data) {
+        // Base damage pops a red number over the ❤️ (skipped on a game's first render)
+        const lastHp = this._lastHp[player];
+        if (lastHp !== undefined && data.hp < lastHp) {
+            const r = document.getElementById(`${player}-hp`).getBoundingClientRect();
+            this._spawnFloatText(r.left + r.width / 2, r.top - 6, `-${lastHp - data.hp}`, 'damage');
+        }
+        this._lastHp[player] = data.hp;
+
         document.getElementById(`${player}-hp`).textContent = data.hp;
 
         // Update player name display
@@ -1214,6 +1230,8 @@ class PrismataWeb {
     }
 
     renderUnits(container, units, isFriendly) {
+        // Remember where every card was, so the rebuilt cards can animate from there
+        const prevCards = this._snapshotCards(container);
         container.innerHTML = '';
         const isP1Units = container.id === 'p1-units';
 
@@ -1316,13 +1334,11 @@ class PrismataWeb {
                 card.style.zIndex = domIndex;
                 const imgUrl = this.unitImages[unit.type];
 
-                // Block overlay (Block Phase) - block value above shield, blue, only eligible units
+                // Block Phase: a small badge with the block value on units that can block (art stays visible)
                 let overlayHtml = '';
                 if (this.state.phase === 'Block' && isFriendly && !unit.exhausted && unit.blk > 0) {
-                    const blkStyle = 'font-size:2rem;font-weight:900;line-height:1;color:#a0d4ff;' +
-                        'text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000,' +
-                        '0 0 10px rgba(0,150,255,0.9);letter-spacing:1px;';
-                    overlayHtml = `<div class="block-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,100,255,0.15);display:flex;align-items:center;justify-content:center;z-index:20;pointer-events:none;user-select:none;"><span style="display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="${blkStyle}">${unit.blk}</span><span style="font-size:2.2rem;line-height:1;">🛡️</span></span></div>`;
+                    overlayHtml = `<div class="block-badge">🛡️ ${unit.blk}</div>`;
+                    if (!isBlocking) card.classList.add('can-block');
                 }
 
                 // Status overlays
@@ -1438,11 +1454,13 @@ class PrismataWeb {
                 // Mark for rotation animation (Top Card)
                 if (indexInType === rotationIndex) {
                     card.classList.add('rotation-target');
-                    card.style.transformOrigin = 'top center';
                 }
 
                 card.dataset.type = type;
                 card.dataset.unitNumber = unitNumber;
+                card.dataset.uid = unit.id; // Stable across re-renders; used to animate changes
+                card.dataset.hp = unit.hp;
+                card.dataset.used = unit.usedThisTurn ? '1' : '';
 
                 column.appendChild(card);
             });
@@ -1499,6 +1517,96 @@ class PrismataWeb {
 
             container.appendChild(column);
         });
+
+        this._animateCardChanges(container, prevCards);
+    }
+
+    // Where each card is now (visually, mid-animation included), keyed by unit id
+    _snapshotCards(container) {
+        const cards = new Map();
+        container.querySelectorAll('.unit-card[data-uid]').forEach(el => {
+            const rect = el.getBoundingClientRect();
+            const rotate = parseFloat(getComputedStyle(el).rotate) || 0; // 'none' -> 0
+            cards.set(el.dataset.uid, {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+                rotate,
+                exhausted: el.classList.contains('exhausted'),
+                hp: parseInt(el.dataset.hp, 10) || 0,
+                type: el.dataset.type
+            });
+        });
+        return {
+            cards,
+            phase: container._renderPhase,
+            session: container._renderSession
+        };
+    }
+
+    // Animate rebuilt cards from their previous angle/position (tap, untap, reorder), and pop
+    // floating numbers for resource gains and combat losses
+    _animateCardChanges(container, prev) {
+        const phase = this.state.phase;
+        container._renderPhase = phase;
+        container._renderSession = this.gameSession;
+        // A new or restarted game replaces every unit; nothing to animate from
+        if (prev.session !== this.gameSession || prev.cards.size === 0) return;
+
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const cards = Array.from(container.querySelectorAll('.unit-card[data-uid]'));
+        const columns = Array.from(container.querySelectorAll('.unit-column'));
+        const untapping = cards.filter(el => {
+            const old = prev.cards.get(el.dataset.uid);
+            return old && old.exhausted && !el.classList.contains('exhausted');
+        });
+        const isWave = untapping.length >= 2; // turn start: untap one column after another
+
+        cards.forEach(el => {
+            const old = prev.cards.get(el.dataset.uid);
+            if (!old) return; // newly bought: the purchase shine handles it
+            const exhausted = el.classList.contains('exhausted');
+
+            // Resource gains: a unit that just tapped for its ability
+            if (!old.exhausted && exhausted && el.dataset.used) {
+                const r = el.getBoundingClientRect();
+                if (old.type === 'energizer') this._spawnFloatText(r.left + r.width / 2, r.top + r.height / 2, '+1🔋', 'energy');
+                if (old.type === 'miner') this._spawnFloatText(r.left + r.width / 2, r.top + r.height / 2, '+1🪙', 'gold');
+            }
+
+            if (reduceMotion) return;
+            const rect = el.getBoundingClientRect();
+            const dx = old.x - (rect.left + rect.width / 2);
+            const dy = old.y - (rect.top + rect.height / 2);
+            const toRotate = exhausted ? 90 : 0;
+            if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(old.rotate - toRotate) < 0.5) return;
+
+            const colIndex = columns.indexOf(el.closest('.unit-column'));
+            const delay = isWave && untapping.includes(el) ? Math.max(0, colIndex) * 40 : 0;
+            el.animate([
+                { translate: `${dx}px ${dy}px`, rotate: `${old.rotate}deg` },
+                { translate: '0px 0px', rotate: `${toRotate}deg` }
+            ], { duration: 200, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', delay, fill: 'backwards' });
+        });
+
+        // Combat losses: units that vanished during blocking/breach pop their HP where they stood
+        const inCombat = ['Block', 'Breach'].includes(phase) || ['Block', 'Breach'].includes(prev.phase);
+        if (inCombat) {
+            const present = new Set(cards.map(el => el.dataset.uid));
+            prev.cards.forEach((old, uid) => {
+                if (!present.has(uid) && old.hp > 0) this._spawnFloatText(old.x, old.y, `-${old.hp}`, 'damage');
+            });
+        }
+    }
+
+    // Short-lived rising label (e.g. "+1🔋", "-2") at a screen position
+    _spawnFloatText(x, y, text, kind) {
+        const el = document.createElement('div');
+        el.className = `float-text ${kind}`;
+        el.textContent = text;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 950);
     }
 
     updateActionButtons() {
@@ -1616,8 +1724,6 @@ class PrismataWeb {
             let animateCard = null;
             if (columnElement) {
                 animateCard = columnElement.querySelector('.unit-card.rotation-target') || columnElement.querySelector('.unit-card.interactive');
-                // FORCE SNAPPY: Remove transition temporarily
-                if (animateCard) animateCard.style.transition = 'none';
             }
             // Units with attack value (striker, guard, volatile, overcharger) - auto-prepare for attack
             if (unit.atk > 0 && unit.type !== 'repeater') {

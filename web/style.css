@@ -105,10 +105,15 @@ button,
     left: 0;
     right: 0;
     bottom: 89px;
-    background: url('assets/UI/battlefield_bg.jpg');
+    /* Battlefield art, muted: a vignette plus a dark band over the glowing centre seam keep the cards in focus */
+    background:
+        linear-gradient(90deg, transparent 42%, rgba(6, 8, 20, 0.45) 50%, transparent 58%),
+        radial-gradient(ellipse at 50% 45%, rgba(6, 8, 20, 0) 35%, rgba(6, 8, 20, 0.7) 100%),
+        url('assets/UI/battlefield_bg.jpg');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    filter: brightness(0.7) saturate(0.75);
     z-index: -1;
 }
 
@@ -511,13 +516,16 @@ button,
 
 /* Unit Grid - Auto-wrapping into 2 rows */
 .unit-grid {
+    /* Card size follows the board so cards fill the space; 4 columns still fit per side */
+    --card-h: calc(clamp(130px, min(18.5vh, 11vw), 230px) * var(--ui-scale));
+    --card-w: calc(var(--card-h) * 0.714);
     flex: 1;
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     /* Allow wrapping */
-    align-content: flex-start;
-    /* Start from top */
+    align-content: safe center;
+    /* Rows sit in the vertical middle of the board */
     gap: calc(1.3rem * var(--ui-scale)) calc(0.5rem * var(--ui-scale));
     /* Vertical and horizontal gap */
     padding: calc(1.6rem * var(--ui-scale));
@@ -533,12 +541,27 @@ button,
     flex-direction: row-reverse;
 }
 
+/* The side that isn't acting recedes a little (toggled in updateUI) */
+.player-area .unit-grid,
+.player-area .player-stats-bar {
+    transition: filter 0.35s ease, opacity 0.35s ease;
+}
+
+.player-area.inactive-side .unit-grid {
+    filter: brightness(0.72) saturate(0.75);
+}
+
+.player-area.inactive-side .player-stats-bar {
+    opacity: 0.8;
+}
+
 /* Unit Column - Each column holds units of one type */
 .unit-column {
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: calc(147px * var(--ui-scale));
+    /* Wide enough for a tapped (sideways) card */
+    min-width: calc(var(--card-h) + 4px);
     position: relative;
     flex-shrink: 0;
     transition: all 0.3s ease;
@@ -555,10 +578,11 @@ button,
 
 /* Card Styling - Poker Size (2.5:3.5 ratio) */
 .unit-card {
-    width: calc(143px * var(--ui-scale));
-    height: calc(200px * var(--ui-scale));
-    flex: 0 0 calc(143px * var(--ui-scale));
-    background: #1a1d2e;
+    width: var(--card-w);
+    height: var(--card-h);
+    /* Column flex container: the basis is the card's height */
+    flex: 0 0 var(--card-h);
+    background: rgba(20, 22, 30, 0.95);
     border: 2px solid var(--glass-border);
     border-radius: var(--radius-md);
     position: relative;
@@ -566,7 +590,9 @@ button,
     flex-direction: column;
     padding: 0;
     /* cursor removed */
-    transition: box-shadow 0.5s, border-color 0.5s, transform 0.5s, filter 0.5s;
+    /* Rotation/position are animated from JS (see _animateCardChanges); only colours transition here */
+    transition: box-shadow 0.2s, border-color 0.2s, filter 0.3s;
+    transform-origin: center center;
     overflow: hidden;
     z-index: 1;
     --unit-filter: brightness(1) grayscale(0);
@@ -584,8 +610,8 @@ button,
 
 /* Cards within column stack with overlap */
 .unit-column .unit-card {
-    margin-top: calc(-104px * var(--ui-scale));
-    /* Overlap cards like solitaire */
+    margin-top: calc(var(--card-h) * -0.68);
+    /* Overlap cards like solitaire (~32% of each stacked card stays visible) */
 }
 
 .unit-column .unit-card:first-child {
@@ -595,29 +621,20 @@ button,
 
 .unit-card:hover {
     border-color: var(--accent-primary);
-    box-shadow: 0 10px 30px rgba(0, 242, 255, 0.3);
+    box-shadow: 0 6px 18px rgba(0, 242, 255, 0.18);
 }
 
-/* Only disable opponent hover in AI mode, not HOTSEAT */
-/* CSS Check */
-/* Removed AI-mode specific hover suppression for symmetry */
-
-.opponent .unit-card.exhausted:hover {
-    transform: rotate(90deg) !important;
-}
-
+/* Tapped: turned sideways with the individual `rotate` property so JS can animate it
+   (an !important transform would block animations) and hover/shine transforms compose with it */
 .unit-card.exhausted {
-    transform: rotate(90deg) !important;
-    transform-origin: center center !important;
+    rotate: 90deg;
     opacity: 1;
-    --unit-filter: grayscale(1) brightness(0.7);
+    --unit-filter: grayscale(0.55) brightness(0.78);
     filter: var(--unit-filter);
-    /* CRITICAL: Kill any transition from hover triggers */
-    transition: none !important;
     /* Remove hover lift and old margins */
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
-    margin-top: calc(-104px * var(--ui-scale));
+    margin-top: calc(var(--card-h) * -0.68);
     /* Match standard card overlap */
 }
 
@@ -627,20 +644,35 @@ button,
     border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
-.unit-card.exhausted.attacking {
-    filter: grayscale(0.6) sepia(0.6) hue-rotate(-50deg) saturate(2.5) brightness(0.85);
-    border-color: rgba(255, 62, 62, 0.6);
-}
-
+/* Usable cards: a quiet green edge that brightens on hover */
 .unit-card.interactive {
-    box-shadow: 0 0 5px var(--accent-green);
-    border-color: var(--accent-green);
+    border-color: rgba(57, 255, 20, 0.45);
+    box-shadow: 0 0 0 1px rgba(57, 255, 20, 0.12);
 }
 
+.unit-card.interactive:hover {
+    border-color: rgba(57, 255, 20, 0.85);
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.35);
+}
+
+/* Tapped but can be undone */
 .unit-card.exhausted.interactive {
-    box-shadow: 0 0 15px var(--accent-green) !important;
-    border-color: var(--accent-green) !important;
+    box-shadow: 0 0 6px rgba(57, 255, 20, 0.25) !important;
+    border-color: rgba(57, 255, 20, 0.4) !important;
     cursor: pointer;
+}
+
+/* Prepared attacker: keep the art readable and mark it with a soft red edge (wins over the undo glow) */
+.unit-card.exhausted.attacking {
+    --unit-filter: grayscale(0.2) brightness(0.88);
+    border-color: rgba(255, 62, 62, 0.75) !important;
+    box-shadow: 0 0 10px rgba(255, 62, 62, 0.3) !important;
+}
+
+/* Block phase: cards that can still block get a blue edge (see .block-badge) */
+.unit-card.can-block {
+    border-color: rgba(90, 170, 255, 0.6);
+    box-shadow: 0 0 8px rgba(90, 170, 255, 0.25);
 }
 
 .unit-card.lethal-target {
@@ -667,12 +699,6 @@ button,
     filter: sepia(1) saturate(5) hue-rotate(-50deg) brightness(1.2) !important;
 }
 
-/* Handled later in file */
-
-.unit-card.exhausted:hover {
-    transform: rotate(90deg) scale(1.05);
-}
-
 /* Card Slot (Square container) */
 .unit-slot {
     aspect-ratio: 1 / 1;
@@ -681,29 +707,6 @@ button,
     justify-content: center;
 }
 
-
-/* Card Styling - Poker Size (2.5:3.5 ratio) */
-.unit-card {
-    height: 100%;
-    /* Fill parent height */
-    width: auto;
-    /* Auto width to maintain aspect ratio */
-    aspect-ratio: 2.5 / 3.5;
-    background: rgba(20, 22, 30, 0.95);
-    border: 2px solid var(--glass-border);
-    border-radius: var(--radius-md);
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    padding: 0;
-    /* cursor removed */
-    /* Explicitly NO transition on transform to make rotation snappy */
-    transition: box-shadow 0.2s, border-color 0.2s;
-    overflow: hidden;
-    z-index: 1;
-}
-
-/* Card Animation Classes - Removed for snappiness */
 .unit-card.exhausting-animation {
     pointer-events: none;
 }
@@ -711,20 +714,9 @@ button,
 /* No individual card hover effects anymore - handled by column */
 
 .unit-card.column-focus {
-    /* Lift removed for snappiness */
     border-color: var(--accent-primary) !important;
-    box-shadow: 0 0 20px var(--accent-primary) !important;
+    box-shadow: 0 0 12px rgba(0, 242, 255, 0.45) !important;
     z-index: 100 !important;
-}
-
-/* No pop-out/lift for opponent units on hover */
-/* Removed AI-mode specific focus suppression for symmetry */
-
-/* Removed confusing animation class */
-
-.unit-card.interactive {
-    box-shadow: 0 0 5px var(--accent-green);
-    border-color: var(--accent-green);
 }
 
 .unit-card.blocking {
@@ -902,18 +894,21 @@ button,
     left: 0;
     right: 0;
     bottom: 0;
-    height: 28px;
-    padding: 4px 12px;
+    /* Collapsed: the last three entries, growing upward over the empty board corner */
+    height: calc(4.3em + 10px);
+    padding: 5px 12px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--glass-border);
     overflow: hidden;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    background: rgba(0, 0, 0, 0.4);
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.92rem;
+    line-height: 1.4;
+    background: rgba(6, 8, 18, 0.6);
+    backdrop-filter: blur(6px);
+    /* Older lines fade out towards the top */
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.35), #000 55%);
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.35), #000 55%);
     transition: all 0.15s ease-out;
-    /* Slightly faster for snappiness */
-    white-space: nowrap;
-    text-overflow: ellipsis;
     z-index: 10;
     user-select: text;
     /* Allow selection of log text */
@@ -922,9 +917,11 @@ button,
 }
 
 .combat-log.expanded {
-    height: 120px;
+    height: 220px;
     overflow-y: auto;
     white-space: normal;
+    -webkit-mask-image: none;
+    mask-image: none;
     background: rgba(10, 11, 16, 0.98);
     border: 1px solid var(--accent-primary);
     box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
@@ -955,8 +952,24 @@ button,
 
 
 .log-entry {
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.1rem;
     color: var(--text-dim);
+}
+
+/* Collapsed log: one line per entry */
+.combat-log:not(.expanded) .log-entry {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.log-entry.opponent {
+    color: #c9a3ff;
+}
+
+.log-entry.system {
+    color: var(--text-dim);
+    opacity: 0.85;
 }
 
 .log-entry.player1 {
@@ -1100,11 +1113,6 @@ body.lockout .unit-card.interactive {
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
     cursor: default !important;
-}
-
-/* Ensure card rotation doesn't snap during lockout transition */
-body.lockout .unit-card.exhausted {
-    transition: transform 0s !important;
 }
 
 .action-btn:disabled,
@@ -2274,6 +2282,7 @@ body.lockout .unit-card.exhausted {
     .unit-grid {
         /* Card width scales down on narrow phones so three unit types fit per row */
         --m-card-w: min(100px, 24vw);
+        align-content: flex-start;
         padding: 0.5rem;
         gap: 1rem calc(var(--m-card-w) * 0.2);
         overflow-y: auto;
@@ -2348,8 +2357,8 @@ body.lockout .unit-card.exhausted {
     }
 
     .unit-card.interactive:hover {
-        border-color: var(--accent-green);
-        box-shadow: 0 0 5px var(--accent-green);
+        border-color: rgba(57, 255, 20, 0.45);
+        box-shadow: 0 0 0 1px rgba(57, 255, 20, 0.12);
     }
 
     /* Modals */
