@@ -78,7 +78,7 @@ class MultiplayerManager {
 
             this._emitState('connecting', 'Creating room...');
 
-            this.peer = new Peer(this.roomCode, {
+            this.peer = new Peer('bo-' + this.roomCode, {
                 debug: 1
             });
 
@@ -128,7 +128,7 @@ class MultiplayerManager {
 
             this.peer.on('open', () => {
                 console.log('[Multiplayer] Connecting to room:', this.roomCode);
-                const conn = this.peer.connect(this.roomCode, { reliable: true });
+                const conn = this.peer.connect('bo-' + this.roomCode, { reliable: true });
 
                 conn.on('open', () => {
                     console.log('[Multiplayer] Connected to host!');
@@ -218,5 +218,19 @@ class MultiplayerManager {
         this.roomCode = null;
         this.isHost = false;
         this._emitState('disconnected', 'Disconnected');
+    }
+}
+if (this.conn) {
+    this.conn.close();
+    this.conn = null;
+}
+if (this.peer) {
+    this.peer.destroy();
+    this.peer = null;
+}
+this.connected = false;
+this.roomCode = null;
+this.isHost = false;
+this._emitState('disconnected', 'Disconnected');
     }
 }

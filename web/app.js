@@ -216,7 +216,7 @@ class PrismataWeb {
 
     showWelcomeScreen() {
         this.isTutorial = false; // Always reset when entering menu
-        
+
         // Clear tutorial UI if coming from tutorial
         const overlay = document.querySelector('.tutorial-overlay');
         if (overlay) overlay.remove();
@@ -236,12 +236,12 @@ class PrismataWeb {
 
     _showTutorialPrompt() {
         if (document.getElementById('tutorial-prompt-overlay')) return;
-        
+
         const overlay = document.createElement('div');
         overlay.id = 'tutorial-prompt-overlay';
         overlay.className = 'tutorial-overlay';
         overlay.style.zIndex = '10005';
-        
+
         overlay.innerHTML = `
             <div class="tutorial-box glass primary animate-in" style="max-width: 500px; text-align: center; padding: 2rem;">
                 <h2 style="margin-bottom: 1rem; color: var(--accent-primary);">Welcome to Build Order!</h2>
@@ -252,15 +252,15 @@ class PrismataWeb {
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(overlay);
-        
+
         document.getElementById('btn-tutorial-yes').onclick = () => {
             this.sounds.play('CLICK');
             overlay.remove();
             this.startTutorial();
         };
-        
+
         document.getElementById('btn-tutorial-no').onclick = () => {
             this.sounds.play('CLICK');
             localStorage.setItem('tutorialPromptDismissed', 'true');
@@ -276,10 +276,10 @@ class PrismataWeb {
         } else {
             // Auto-detect based on physical screen width
             const w = window.screen.width;
-            if      (w <= 1366) scale = 0.85;
+            if (w <= 1366) scale = 0.85;
             else if (w <= 1920) scale = 1.0;
             else if (w <= 2560) scale = 1.2;
-            else                scale = 1.4;
+            else scale = 1.4;
         }
         this._applyUIScale(scale);
         // Sync slider position to the current scale
@@ -334,19 +334,19 @@ class PrismataWeb {
                     let x, y, attempts = 0, ok = false;
                     const w = 90 + Math.random() * 60;
                     let currentMinDist = 300; // Target 300px distance
-                    
+
                     do {
                         // Confine coordinates to the current cell segment (with safe edge bleeding)
-                        x = (col * cellW) - w/4 + Math.random() * cellW;
+                        x = (col * cellW) - w / 4 + Math.random() * cellW;
                         y = (row * cellH) - 45 + Math.random() * cellH;
-                        
+
                         const cx = x + w / 2, cy = y + 90;
                         ok = placed.every(p => Math.hypot(cx - p.cx, cy - p.cy) >= currentMinDist);
                         attempts++;
-                        
+
                         // If cell gets too dense to honor 300px spacing, gradually relax the limit
                         if (!ok && attempts % 20 === 0) {
-                            currentMinDist *= 0.85; 
+                            currentMinDist *= 0.85;
                         }
                     } while (!ok && attempts < 150);
 
@@ -439,8 +439,6 @@ class PrismataWeb {
                 document.getElementById('room-code-text').textContent = code;
             } catch (e) {
                 console.error('Failed to create room:', e);
-                lobbyCreate.classList.add('hidden');
-                lobbyChoice.classList.remove('hidden');
             }
         };
 
@@ -677,11 +675,11 @@ class PrismataWeb {
                 }
 
                 this.setupMobileLayout();
-                
+
                 // Clear state triggers before first updateUI
-                this.currentTurnPlayer = null; 
+                this.currentTurnPlayer = null;
                 this.updateUI();
-                
+
                 // Delay first turn sound to match banner
                 if (this.state && this.state.turn === 1) {
                     setTimeout(() => {
@@ -912,7 +910,7 @@ class PrismataWeb {
 
         // Update Header
         document.getElementById('turn-count').textContent = this.state.turn;
-        
+
         // Format phase name (e.g. ActionPhase -> ACTION PHASE)
         let phaseText = this.state.phase;
         if (phaseText.toLowerCase().includes('phase')) {
@@ -922,7 +920,7 @@ class PrismataWeb {
             // Append "PHASE" (e.g. "Action" -> "ACTION PHASE")
             phaseText = phaseText.toUpperCase() + " PHASE";
         }
-        
+
         document.getElementById('phase-name').textContent = phaseText;
         document.getElementById('player-name-display').textContent = this.state.currentPlayer.toUpperCase();
 
@@ -943,7 +941,7 @@ class PrismataWeb {
         if (this.currentTurnPlayer !== this.state.currentPlayer) {
             const oldPlayer = this.currentTurnPlayer;
             this.currentTurnPlayer = this.state.currentPlayer;
-            
+
             const triggerBanner = () => {
                 const banner = document.getElementById('turn-banner');
                 const bannerText = document.getElementById('turn-banner-text');
@@ -957,12 +955,12 @@ class PrismataWeb {
                     newBanner.classList.remove('hidden');
                     this.isTurnTransitioning = true; // Lock interaction
                     document.body.classList.add('lockout'); // Visual lockout
-                    
+
                     setTimeout(() => {
                         newBanner.classList.add('hidden');
                         this.isTurnTransitioning = false; // Unlock interaction
                         document.body.classList.remove('lockout'); // Visual unlock
-                        
+
                         // RE-UPDATE BUTTONS: Ensure buttons return to 1.0 opacity after transition ends
                         this.updateActionButtons();
 
@@ -1045,7 +1043,7 @@ class PrismataWeb {
         this.updateResourceDisplay(`${player}-gold`, data.gold);
         this.updateResourceDisplay(`${player}-energy`, data.energy);
         this.updateResourceDisplay(`${player}-hp`, data.hp, true);
-        
+
         // Update tutorial at the very end of UI cycle
         if (this.isTutorial) {
             this.updateTutorialUI();
@@ -1653,7 +1651,7 @@ class PrismataWeb {
                     success, msg = engine.use_ability("${unit.type}", ${unitNumber})
                     {"success": success, "msg": msg}
                 `);
-                
+
                 if (animateCard) {
                     animateCard.classList.add('unit-destroy');
                     this.sounds.play('DESTROY');
@@ -2453,14 +2451,14 @@ class PrismataWeb {
         // The newest card is always the last child in its column
         const target = col.querySelector('.unit-card:last-child');
 
-            if (target) {
-                setTimeout(() => {
-                    target.classList.remove('unit-shine');
-                    void target.offsetWidth; // Force CSS reflow to restart animation
-                    target.classList.add('unit-shine');
-                    setTimeout(() => target.classList.remove('unit-shine'), 1100);
-                }, 300);
-            }
+        if (target) {
+            setTimeout(() => {
+                target.classList.remove('unit-shine');
+                void target.offsetWidth; // Force CSS reflow to restart animation
+                target.classList.add('unit-shine');
+                setTimeout(() => target.classList.remove('unit-shine'), 1100);
+            }, 300);
+        }
     }
 
     async processActionResult(proxy, cardElement) {
@@ -2866,7 +2864,7 @@ class PrismataWeb {
         try {
             const speedMap = { '0': 3500, '1': 2000, '2': 0 };
             const stepDelayMs = speedMap[this.aiSpeed] !== undefined ? speedMap[this.aiSpeed] : 900;
-            
+
             let boughtUnits = [];
 
             if (stepDelayMs > 0) {
@@ -3434,7 +3432,7 @@ class PrismataWeb {
             case 10: // Turn 3 - Gold vs Energy
                 if (this.state.turn >= 3 && this.state.currentPlayer === this.state.p1.name && this.state.phase === 'Action') {
                     const gold = this.state.p1.gold;
-                    
+
                     if (gold >= 3) {
                         text = "Now you have 3 Gold🪙! Let's get some offense.<br>Buy a <b>Striker</b>.";
                         highlightId = "btn-buy";
@@ -3477,8 +3475,8 @@ class PrismataWeb {
                         text = "Enemy Miner Blocked 🛡️ 1 damage from your Total Attack Power⚔️ with its Miner. Any leftover unblocked damage will be assigned by the attacker during the Breach Phase.";
                         buttonText = "Next";
                         onButtonClick = () => {
-                           this.tutorialPart = 2;
-                           this.updateTutorialUI();
+                            this.tutorialPart = 2;
+                            this.updateTutorialUI();
                         };
                     } else {
                         text = "You have 1 more leftover Attack Power⚔️ to assign either to Enemy Base or enemy Miner thus destroying it.";
@@ -3537,7 +3535,7 @@ class PrismataWeb {
             </div>
         `;
         document.body.appendChild(overlay);
-        
+
         // Grey out and disable board
         if (this.elements.btnEnd) {
             this.elements.btnEnd.style.filter = 'grayscale(1) opacity(0.5)';
@@ -3600,27 +3598,27 @@ class PrismataWeb {
                 overlay.classList.add('top');
             }
         }
-        
+
         let html = `<div class="tutorial-text">${text}</div>`;
         if (buttonText) {
             html += `<button class="tutorial-btn">${buttonText}</button>`;
         }
         overlay.innerHTML = html;
-        
+
         // Mobile UX: Click overlay to flip position if it covers something
         overlay.onclick = (e) => {
             if (e.target.closest('.tutorial-btn')) return;
             overlay.classList.toggle('top');
             this.sounds.play('CLICK');
         };
-        
+
         if (buttonText && onClick) {
             overlay.querySelector('.tutorial-btn').onclick = () => {
                 this.sounds.play('CLICK');
                 onClick();
             };
         }
-        
+
         document.body.appendChild(overlay);
 
         if (highlightId) {
