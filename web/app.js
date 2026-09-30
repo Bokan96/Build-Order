@@ -1453,7 +1453,7 @@ class PrismataWeb {
 
                 // Hover Preview - available for all cards
                 card.addEventListener('mouseenter', (e) => {
-                    if (window.innerWidth <= 768) return; // Disable hover on mobile
+                    if (!this._canHover()) return; // Touch screens use long-press instead
                     e.stopPropagation();
                     this.handleUnitMouseEnter(unit, e);
                     // What a click does: the card's own hint, or its column's (breach targets)
@@ -1466,7 +1466,7 @@ class PrismataWeb {
                 }, { passive: true });
 
                 card.addEventListener('mouseleave', (e) => {
-                    if (window.innerWidth <= 768) return;
+                    if (!this._canHover()) return;
                     e.stopPropagation();
                     this.handleUnitMouseLeave();
                     this._hideActionChip();
@@ -1475,7 +1475,7 @@ class PrismataWeb {
 
                 // Touch and Hold Preview for Mobile
                 card.addEventListener('touchstart', (e) => {
-                    if (window.innerWidth > 768) return;
+                    if (this._canHover()) return;
                     if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
 
                     this.hoverTimeout = setTimeout(() => {
@@ -1496,7 +1496,7 @@ class PrismataWeb {
                 }, { passive: true });
 
                 const clearTouch = () => {
-                    if (window.innerWidth > 768) return;
+                    if (this._canHover()) return;
                     if (this.hoverTimeout) clearTimeout(this.hoverTimeout);
                     this.elements.unitPreview.classList.add('hidden');
                     // Also clear any column-focus so card is not "stuck" selected
@@ -1506,7 +1506,7 @@ class PrismataWeb {
                 card.addEventListener('touchcancel', clearTouch, { passive: true });
                 card.addEventListener('touchmove', clearTouch, { passive: true });
                 card.addEventListener('contextmenu', (e) => {
-                    if (window.innerWidth <= 768) e.preventDefault();
+                    if (!this._canHover()) e.preventDefault();
                 });
 
                 // Interaction Logic
@@ -1623,7 +1623,7 @@ class PrismataWeb {
                     column.dataset.hint = `Destroy ${targetName}: ${hpNeededToKill}⚔️`;
                     column.addEventListener('mouseenter', () => {
                         column.style.transform = 'translateY(-5px)';
-                        if (window.innerWidth > 768) this._showActionChip(column);
+                        if (this._canHover()) this._showActionChip(column);
                     });
                     column.addEventListener('mouseleave', () => {
                         column.style.transform = '';
@@ -1871,6 +1871,12 @@ class PrismataWeb {
         clearTimeout(this._recapTimer);
         this._recapTimer = setTimeout(() => toast.classList.remove('visible'), 4500);
         this.log(`Last turn: ${text}`, 'opponent');
+    }
+
+    // Real hover (mouse/trackpad) on a wide screen. Phones in either orientation use tap + long-press,
+    // so hover-only popups (preview, action chip) don't get stuck after a tap.
+    _canHover() {
+        return window.innerWidth > 768 && window.matchMedia('(hover: hover)').matches;
     }
 
     // Label for what clicking a card will do right now ('' when nothing)
