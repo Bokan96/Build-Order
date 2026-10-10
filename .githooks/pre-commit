@@ -1,14 +1,16 @@
 #!/bin/sh
-# Refuse a commit when the web JS doesn't parse or the engine rules fail.
+# Refuse a commit when staged web JS doesn't parse or the engine rules fail.
 # A push to Web-Port deploys the live site, so this is the last cheap safety net.
 # Enable once per clone: git config core.hooksPath .githooks
 set -e
 cd "$(git rev-parse --show-toplevel)"
 
-if git diff --cached --name-only | grep -qE '^web/.*\.js$'; then
+staged_js=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^web/.*\.js$' || true)
+if [ -n "$staged_js" ]; then
     echo "pre-commit: checking JS syntax"
-    node --check web/app.js
-    node --check web/multiplayer.js
+    for f in $staged_js; do
+        node --check "$f"
+    done
 fi
 
 if git diff --cached --name-only | grep -qE '^src/prismata/'; then
