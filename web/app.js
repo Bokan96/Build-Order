@@ -33,6 +33,10 @@ class PrismataWeb {
         this._maxHp = {}; // Starting base HP per seat, for the health bars
         this._flyingUids = new Set(); // Bought cards whose fly-in ghost hasn't landed yet
         this._recapStart = null; // Opponent's unit counts at the start of their turn
+        this._damageDealt = { p1: 0, p2: 0 }; // Base damage dealt by each seat (end screen)
+        this._unitsKilled = { p1: 0, p2: 0 }; // Units destroyed in breaches by each seat
+        this.rematch = { local: false, remote: false }; // Online rematch handshake
+        this.endTurnArmed = false; // END TURN is waiting for its confirming click
         this.hasInteracted = false;
         this.isTurnTransitioning = false; // Prevents actions during "Begin Turn" banner
         this.isTutorial = false;
@@ -277,13 +281,11 @@ class PrismataWeb {
         document.body.appendChild(overlay);
 
         document.getElementById('btn-tutorial-yes').onclick = () => {
-            this.sounds.play('CLICK');
             overlay.remove();
             this.startTutorial();
         };
 
         document.getElementById('btn-tutorial-no').onclick = () => {
-            this.sounds.play('CLICK');
             localStorage.setItem('tutorialPromptDismissed', 'true');
             overlay.remove();
         };
@@ -456,7 +458,6 @@ class PrismataWeb {
         document.getElementById('btn-create-room').onclick = async () => {
             lobbyChoice.classList.add('hidden');
             lobbyCreate.classList.remove('hidden');
-            this.sounds.play('CLICK');
 
             try {
                 const code = await this.multiplayer.createRoom();
@@ -476,14 +477,12 @@ class PrismataWeb {
                 btn.textContent = '✅';
                 setTimeout(() => btn.textContent = '📋', 1500);
             });
-            this.sounds.play('CLICK');
         };
 
         // Join Room
         document.getElementById('btn-join-room').onclick = () => {
             lobbyChoice.classList.add('hidden');
             lobbyJoin.classList.remove('hidden');
-            this.sounds.play('CLICK');
             document.getElementById('join-code-input').focus();
         };
 
@@ -491,7 +490,6 @@ class PrismataWeb {
         document.getElementById('btn-connect').onclick = async () => {
             const code = document.getElementById('join-code-input').value.trim();
             if (!code) return;
-            this.sounds.play('CLICK');
 
             try {
                 await this.multiplayer.joinRoom(code);
@@ -509,7 +507,6 @@ class PrismataWeb {
 
         // Back button
         document.getElementById('btn-back-to-menu-lobby').onclick = () => {
-            this.sounds.play('CLICK');
             this.multiplayer.disconnect();
             this.elements.onlineLobbyScreen.classList.add('hidden');
             this.showWelcomeScreen();
@@ -547,7 +544,6 @@ class PrismataWeb {
         const btnDisconnectMenu = document.getElementById('btn-disconnect-menu');
         if (btnDisconnectMenu) {
             btnDisconnectMenu.onclick = () => {
-                this.sounds.play('CLICK');
                 this.elements.disconnectModal.classList.add('hidden');
                 this._abandonGame();
                 this.multiplayer.disconnect();
@@ -586,6 +582,7 @@ class PrismataWeb {
                 return isUnit(a.unitType) && isNum(a.unitNumber) && typeof a.isP1Target === 'boolean';
             case 'repeaterTarget':
                 return isUnit(a.targetType) && isNum(a.targetNumber) && isNum(a.sourceNumber);
+            case 'clearBlocks':
             case 'endTurn':
                 return true;
             default:
@@ -594,6 +591,11 @@ class PrismataWeb {
     }
 
     receiveRemoteAction(action) {
+        // Rematch requests are allowed from either side at any time
+        if (action && action.type === 'rematch') {
+            this._onRematchRequest(true);
+            return;
+        }
         if (!this._isValidRemoteAction(action)) {
             console.warn('[Online] Ignoring invalid or out-of-turn remote action:', action);
             return;
@@ -634,6 +636,12 @@ class PrismataWeb {
 
                 case 'block':
                     this._runPy(`engine.assign_blockers([(r_type, 1)])`, { r_type: action.unitType });
+                    this.syncState();
+                    this.updateUI();
+                    break;
+
+                case 'clearBlocks':
+                    this.pyodide.runPython(`engine.clear_blockers()`);
                     this.syncState();
                     this.updateUI();
                     break;
@@ -706,6 +714,7 @@ class PrismataWeb {
             setTimeout(() => {
                 this.elements.loadingOverlay.style.display = 'none';
                 this.elements.app.classList.remove('hidden');
+                if (this._bgFx) this._bgFx.resize(); // the board only has a size once it's shown
 
                 // Set body class based on game mode
                 if (this.gameMode === 'AI') {
@@ -855,6 +864,9 @@ class PrismataWeb {
         this.onlineGameReady = this.gameMode === 'ONLINE';
         this._lastHp = {}; // Base HP seen per seat, for damage popups
         this._maxHp = {};
+        this._damageDealt = { p1: 0, p2: 0 };
+        this._unitsKilled = { p1: 0, p2: 0 };
+        this.rematch = { local: false, remote: false };
 
         // Initialize GameState and GameEngine instances in Python.
         // Names come from user input / the remote peer, so they're passed as globals, never spliced into code.
@@ -983,6 +995,7 @@ class PrismataWeb {
         if (aiPlate) aiPlate.classList.remove('thinking');
         this._flyingUids.clear();
         this._recapStart = null;
+        this._disarmEndTurn();
         const recap = document.getElementById('recap-toast');
         if (recap) recap.classList.remove('visible');
         document.body.classList.remove('lockout');
@@ -1019,11 +1032,7 @@ class PrismataWeb {
 
     updateUI() {
         if (!this.state) return;
-
-        if (this.state.gameOver && !this.endGameShown) {
-            this.endGameShown = true; // Show the modal (and play the sound) only once
-            this.showEndGameScreen();
-        }
+        this._disarmEndTurn(); // anything that changed the state re-evaluates the end-turn check
 
         // Update Header
         document.getElementById('turn-count').textContent = this.state.turn;
@@ -1099,6 +1108,7 @@ class PrismataWeb {
                             this.updateTutorialUI();
                             this.applyTutorialHighlights();
                         }
+                        this._skipEmptyBlockPhase();
                     }, 1200); // matches the ribbonIn animation in style.css
                 }
             };
@@ -1160,11 +1170,23 @@ class PrismataWeb {
         // Update Central Attack
         this.updateCentralAttack();
 
+        // Centre seam pulses while an attack is prepared or incoming
+        const combat = this.state.combat || { atk: 0 };
+        const activeAtk = ((isP1Turn ? this.state.p1 : this.state.p2).atk) || 0;
+        const pending = !this.state.gameOver && (((this.state.phase === 'Block' || this.state.phase === 'Breach') && combat.atk > 0) || activeAtk > 0);
+        document.querySelector('.game-board').classList.toggle('attack-pending', pending);
+
         // Update Buttons
         this.updateActionButtons();
 
         // "What now" hint next to the buttons
         this.updateTurnHint();
+
+        // End screen last, so the final hit is already counted in the stats it shows
+        if (this.state.gameOver && !this.endGameShown) {
+            this.endGameShown = true; // Show the modal (and play the sound) only once
+            this.showEndGameScreen();
+        }
 
         // Tutorial last: renderUnits rebuilds the unit columns, which would drop any highlight applied earlier
         if (this.isTutorial) {
@@ -1180,6 +1202,7 @@ class PrismataWeb {
             const r = document.getElementById(`${player}-hp`).getBoundingClientRect();
             this._spawnFloatText(r.left + r.width / 2, r.top - 6, `-${lastHp - data.hp}`, 'damage');
             this._flashBaseHit(player);
+            this._damageDealt[player === 'p1' ? 'p2' : 'p1'] += lastHp - data.hp;
         }
         this._lastHp[player] = data.hp;
         this._renderHpBar(player, data.hp, lastHp);
@@ -1721,8 +1744,12 @@ class PrismataWeb {
         const inCombat = ['Block', 'Breach'].includes(phase) || ['Block', 'Breach'].includes(prev.phase);
         if (inCombat) {
             const present = new Set(cards.map(el => el.dataset.uid));
+            const inBreach = phase === 'Breach' || prev.phase === 'Breach'; // (a Barrier breaking on block isn't a kill)
             prev.cards.forEach((old, uid) => {
-                if (!present.has(uid) && old.hp > 0) this._spawnFloatText(old.x, old.y, `-${old.hp}`, 'damage');
+                if (!present.has(uid) && old.hp > 0) {
+                    this._spawnFloatText(old.x, old.y, `-${old.hp}`, 'damage');
+                    if (inBreach) this._unitsKilled[container.id === 'p1-units' ? 'p2' : 'p1']++;
+                }
             });
         }
     }
@@ -1751,7 +1778,8 @@ class PrismataWeb {
             live.classList.add('unit-shine');
             setTimeout(() => live.classList.remove('unit-shine'), 1100);
         };
-        if (reduceMotion) {
+        // Only purchases (Action phase) fly in; a Barrier restored by "clear blockers" just reappears
+        if (reduceMotion || this.state.phase !== 'Action') {
             shine();
             return;
         }
@@ -1852,6 +1880,235 @@ class PrismataWeb {
         setTimeout(() => {
             if (session === this.gameSession && this.state && !this.state.gameOver) this._showRecap(text);
         }, 1250); // after the turn ribbon
+    }
+
+    // ---- Loop helpers: harvest, end-turn safety, block all/clear, empty-block skip, rematch ----
+
+    // Ready economy units the Harvest button would tap: every Energizer, then Miners as energy allows
+    _harvestable() {
+        const s = this.state;
+        if (!s) return [];
+        const me = this.isP1Turn() ? s.p1 : s.p2;
+        const ready = type => me.units.filter(u => u.isAlive && !u.exhausted && u.type === type);
+        const energizers = ready('energizer');
+        return energizers.concat(ready('miner').slice(0, Math.max(0, me.energy + energizers.length)));
+    }
+
+    _harvest() {
+        const s = this.state;
+        if (this.isTurnTransitioning || this.processingTurn || !s || s.phase !== 'Action' || !this._isMyTurn()) return;
+        if (this.targeting) this.cancelTargeting();
+        const me = this.isP1Turn() ? s.p1 : s.p2;
+        // Engine unit numbers are 1-based positions among ALL units of that type (tapped ones included)
+        const numbered = type => me.units.filter(u => u.type === type).map((u, i) => ({ u, n: i + 1 })).filter(x => x.u.isAlive && !x.u.exhausted);
+        const tap = (type, n) => {
+            const ok = this._runPy(`engine.use_ability(r_type, r_num)[0]`, { r_type: type, r_num: n });
+            if (ok && this.gameMode === 'ONLINE' && !this.isRemoteAction) {
+                this.multiplayer.sendAction({ type: 'ability', unitType: type, unitNumber: n });
+            }
+            return ok;
+        };
+        let energy = 0, gold = 0;
+        numbered('energizer').forEach(x => { if (tap('energizer', x.n)) energy++; });
+        let avail = me.energy + energy;
+        for (const x of numbered('miner')) {
+            if (avail < 1) break;
+            if (tap('miner', x.n)) { gold++; avail--; }
+        }
+        if (!energy && !gold) return;
+        this.sounds.play('ABILITY');
+        this.log(`Harvested: ${energy ? `+${energy}🔋` : ''}${energy && gold ? ' ' : ''}${gold ? `+${gold}🪙 (−${gold}🔋)` : ''}`, 'player1');
+        this.syncState();
+        this.updateUI();
+    }
+
+    // Ending the Action phase with unspent energy or untapped Energizers asks once
+    _shouldConfirmEndTurn() {
+        const s = this.state;
+        if (!s || s.phase !== 'Action' || s.gameOver || this.isTutorial || !this._isMyTurn()) return false;
+        const me = this.isP1Turn() ? s.p1 : s.p2;
+        return me.energy > 0 || me.units.some(u => u.isAlive && !u.exhausted && u.type === 'energizer');
+    }
+
+    _armEndTurn() {
+        const me = this.isP1Turn() ? this.state.p1 : this.state.p2;
+        const readyE = me.units.filter(u => u.isAlive && !u.exhausted && u.type === 'energizer').length;
+        const parts = [];
+        if (me.energy > 0) parts.push(`${me.energy}🔋 lost`);
+        if (readyE) parts.push(`${readyE} Energizer${readyE > 1 ? 's' : ''} untapped`);
+        this.endTurnArmed = true;
+        this.elements.btnEnd.textContent = `END ANYWAY? · ${parts.join(' · ')}`;
+        this.elements.btnEnd.classList.add('confirm');
+        clearTimeout(this._armTimer);
+        this._armTimer = setTimeout(() => this._disarmEndTurn(), 3500);
+    }
+
+    _disarmEndTurn() {
+        if (!this.endTurnArmed) return;
+        this.endTurnArmed = false;
+        clearTimeout(this._armTimer);
+        this.elements.btnEnd.classList.remove('confirm');
+        if (this.state) this.updateActionButtons();
+    }
+
+    _blockAll() {
+        const s = this.state;
+        if (this.isTurnTransitioning || this.processingTurn || !s || s.phase !== 'Block' || !this._isMyTurn()) return;
+        const me = this.isP1Turn() ? s.p1 : s.p2;
+        const eligible = me.units.filter(u => u.isAlive && !u.exhausted && u.blk > 0 && !u.blocking);
+        let n = 0;
+        eligible.forEach(u => {
+            // assign_blockers takes the next available unit of that type each call
+            const ok = this._runPy(`engine.assign_blockers([(r_type, 1)])[0]`, { r_type: u.type });
+            if (ok) {
+                n++;
+                if (this.gameMode === 'ONLINE' && !this.isRemoteAction) this.multiplayer.sendAction({ type: 'block', unitType: u.type });
+            }
+        });
+        if (!n) return;
+        this.sounds.play('BLOCK');
+        this.log(`Blocked with ${n} unit${n > 1 ? 's' : ''}.`, 'player1');
+        this.syncState();
+        this.updateUI();
+    }
+
+    _clearBlocks() {
+        const s = this.state;
+        if (this.isTurnTransitioning || this.processingTurn || !s || s.phase !== 'Block' || !this._isMyTurn()) return;
+        const ok = this.pyodide.runPython(`engine.clear_blockers()[0]`);
+        if (!ok) return;
+        if (this.gameMode === 'ONLINE' && !this.isRemoteAction) this.multiplayer.sendAction({ type: 'clearBlocks' });
+        this.log('Blockers cleared.', 'system');
+        this.syncState();
+        this.updateUI();
+    }
+
+    // A Block phase with nothing that can block has no decision in it: advance for the defender automatically
+    _skipEmptyBlockPhase() {
+        const s = this.state;
+        if (!s || s.phase !== 'Block' || s.gameOver || this.isTutorial || !this._isMyTurn()) return;
+        if (this.processingTurn || this.isRemoteAction) return;
+        const me = this.isP1Turn() ? s.p1 : s.p2;
+        if (me.units.some(u => u.isAlive && !u.exhausted && u.blk > 0)) return;
+        this.log('No blockers ready: the attack goes through.', 'important');
+        this.handleEndTurn();
+    }
+
+    _requestRematch() {
+        if (this.gameMode !== 'ONLINE') {
+            this._doRematch();
+            return;
+        }
+        this.rematch.local = true;
+        this.multiplayer.sendAction({ type: 'rematch' });
+        const btn = document.getElementById('btn-endgame-rematch');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'WAITING FOR OPPONENT…';
+        }
+        this._onRematchRequest(false);
+    }
+
+    _onRematchRequest(fromRemote) {
+        if (fromRemote) this.rematch.remote = true;
+        if (this.rematch.local && this.rematch.remote) {
+            this._doRematch();
+        } else if (fromRemote) {
+            const btn = document.getElementById('btn-endgame-rematch');
+            if (btn && !btn.disabled) btn.textContent = 'PLAY AGAIN · opponent is ready';
+        }
+    }
+
+    _doRematch() {
+        this.rematch = { local: false, remote: false };
+        const btn = document.getElementById('btn-endgame-rematch');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'PLAY AGAIN';
+        }
+        if (this.elements.endgameModal) this.elements.endgameModal.classList.add('hidden');
+        this.setupGame();
+        this.currentTurnPlayer = null; // first-turn ribbon again
+        this.updateUI();
+        this.log('Rematch!', 'system');
+        const session = this.gameSession;
+        setTimeout(() => { if (session === this.gameSession) this.sounds.play('TURN_START'); }, 1000);
+    }
+
+    // ---- Visual helpers: card tilt, living background ----
+
+    _initCardTilt() {
+        const reduce = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        [this.elements.p1Units, this.elements.p2Units].forEach(grid => {
+            grid.addEventListener('mousemove', (e) => {
+                if (!this._canHover() || reduce()) return;
+                const card = e.target.closest('.unit-card');
+                if (this._tiltCard && this._tiltCard !== card) this._resetTilt();
+                if (!card || card.classList.contains('exhausted') || card.classList.contains('unit-shine') || card.classList.contains('unit-destroy')) return;
+                const r = card.getBoundingClientRect();
+                const px = (e.clientX - r.left) / r.width - 0.5;
+                const py = (e.clientY - r.top) / r.height - 0.5;
+                card.style.setProperty('--ty', `${(px * 14).toFixed(1)}deg`);
+                card.style.setProperty('--tx', `${(-py * 14).toFixed(1)}deg`);
+                card.style.setProperty('--sx', `${((px + 0.5) * 100).toFixed(0)}%`);
+                card.style.setProperty('--sy', `${((py + 0.5) * 100).toFixed(0)}%`);
+                card.classList.add('tilt');
+                this._tiltCard = card;
+            }, { passive: true });
+            grid.addEventListener('mouseleave', () => this._resetTilt(), { passive: true });
+        });
+    }
+
+    _resetTilt() {
+        const c = this._tiltCard;
+        if (!c) return;
+        c.classList.remove('tilt');
+        ['--tx', '--ty', '--sx', '--sy'].forEach(p => c.style.removeProperty(p));
+        this._tiltCard = null;
+    }
+
+    // Slow drifting embers on a canvas behind the board (paused when hidden or under reduced motion)
+    _initBackgroundFx() {
+        const canvas = document.getElementById('bg-fx');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+        let particles = [], w = 1, h = 1, last = 0, raf = 0;
+        const resize = () => {
+            const r = canvas.parentElement.getBoundingClientRect();
+            w = canvas.width = Math.max(1, Math.floor(r.width));
+            h = canvas.height = Math.max(1, Math.floor(r.height));
+        };
+        const spawn = (fresh) => ({
+            x: Math.random() * w, y: fresh ? h + 6 : Math.random() * h,
+            r: 1 + Math.random() * 1.8, vy: 7 + Math.random() * 12, vx: (Math.random() - 0.5) * 5,
+            life: 0, max: 9 + Math.random() * 8, hue: Math.random() < 0.55 ? 186 : 276
+        });
+        const frame = (t) => {
+            raf = requestAnimationFrame(frame);
+            if (document.hidden || w < 4) return;
+            const dt = Math.min(0.05, last ? (t - last) / 1000 : 0);
+            last = t;
+            ctx.clearRect(0, 0, w, h);
+            while (particles.length < 40) particles.push(spawn(particles.length > 0));
+            for (const p of particles) {
+                p.life += dt;
+                p.y -= p.vy * dt;
+                p.x += p.vx * dt + Math.sin(p.life * 1.3 + p.r) * 0.25;
+                const fade = Math.min(1, p.life / 1.5) * Math.min(1, Math.max(0, (p.max - p.life) / 2));
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${p.hue}, 90%, 72%, ${(0.38 * fade).toFixed(3)})`;
+                ctx.fill();
+            }
+            particles = particles.filter(p => p.life < p.max && p.y > -8);
+        };
+        const start = () => { if (raf || reduce.matches) return; resize(); last = 0; raf = requestAnimationFrame(frame); };
+        const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; ctx.clearRect(0, 0, w, h); };
+        window.addEventListener('resize', () => { if (raf) resize(); });
+        if (reduce.addEventListener) reduce.addEventListener('change', () => (reduce.matches ? stop() : start()));
+        this._bgFx = { start, stop, resize };
+        start();
     }
 
     _showRecap(text) {
@@ -2048,9 +2305,10 @@ class PrismataWeb {
             const me = this.isP1Turn() ? s.p1 : s.p2;
             const left = Math.max(0, combat.atk - combat.blk);
             const canBlock = me.units.some(u => u.isAlive && !u.exhausted && u.blk > 0 && !u.blocking);
+            const preview = `up to ${left} reach you (base ${me.hp} → ${Math.max(0, me.hp - left)})`;
             if (left === 0) return 'Attack fully blocked. Press FINISH BLOCKING.';
-            if (!canBlock) return `Incoming ⚔️${left} and no blockers ready. Press FINISH BLOCKING.`;
-            return `Incoming ⚔️${left}. Click units to block, then FINISH BLOCKING.`;
+            if (!canBlock) return `Incoming ⚔️${left} and no blockers ready: ${preview}.`;
+            return `Incoming ⚔️${combat.atk}${combat.blk ? `, ${combat.blk} blocked` : ''} → ${preview}. Click units to block.`;
         }
         if (s.phase === 'Breach') {
             const left = Math.max(0, combat.atk - combat.blk - combat.assigned);
@@ -2103,11 +2361,34 @@ class PrismataWeb {
         } else if (phase === 'Breach') {
             const combat = this.state.combat;
             const remaining = Math.max(0, (combat.atk - combat.blk) - combat.assigned);
-            this.elements.btnEnd.textContent = `ATTACK BASE ${remaining} ⚔️`;
+            // Preview the defender's base after the hit (the defender is the non-active seat during Breach)
+            const defender = this.isP1Turn() ? this.state.p2 : this.state.p1;
+            this.elements.btnEnd.textContent = `ATTACK BASE ${remaining} ⚔️ → ❤️${Math.max(0, defender.hp - remaining)}`;
             this.elements.btnEnd.classList.add('important');
-        } else {
+        } else if (!this.endTurnArmed) {
             this.elements.btnEnd.textContent = "END TURN";
             this.elements.btnEnd.classList.remove('important');
+        }
+        if (phase !== 'Action') this._disarmEndTurn();
+
+        // Harvest (tap all economy) and Block all / clear helpers
+        const harvestBtn = document.getElementById('btn-harvest');
+        if (harvestBtn) {
+            const canHarvest = isMyTurn && phase === 'Action' && !this.state.gameOver && !this.isTutorial && this._harvestable().length > 0;
+            harvestBtn.classList.toggle('hidden', !canHarvest);
+            harvestBtn.disabled = locked;
+        }
+        const blockAll = document.getElementById('btn-block-all');
+        const blockClear = document.getElementById('btn-block-clear');
+        if (blockAll && blockClear) {
+            const me = this.isP1Turn() ? this.state.p1 : this.state.p2;
+            const inBlock = isMyTurn && phase === 'Block' && !this.state.gameOver;
+            const eligible = inBlock ? me.units.filter(u => u.isAlive && !u.exhausted && u.blk > 0 && !u.blocking).length : 0;
+            const assigned = inBlock ? me.units.filter(u => u.blocking).length : 0;
+            blockAll.classList.toggle('hidden', !inBlock || eligible === 0);
+            blockClear.classList.toggle('hidden', !inBlock || assigned === 0);
+            blockAll.disabled = locked;
+            blockClear.disabled = locked;
         }
 
         // Buys chip on SHOP, only when it matters: the next buy costs +1 energy, or both buys are used
@@ -2674,6 +2955,8 @@ class PrismataWeb {
                 // Proceed with next player's Action phase
                 this.sounds.play('TURN_START');
                 if (this.gameMode === 'AI') {
+                    // Let the hit (popups, pips, flash) land before the AI starts thinking
+                    if (!(await this._waitSession(1200, session))) return;
                     await this._runAIActionTurn(session);
                 } else {
                     this.log(`${this.state.currentPlayer}'s turn!`, "system");
@@ -2737,6 +3020,9 @@ class PrismataWeb {
                         this.updateUI();
                         return; // Wait for player to assign
                     }
+                    // Fully blocked: show the resolved board for a moment before the AI starts its turn
+                    this.updateUI();
+                    if (!(await this._waitSession(1200, session))) return;
                 } else {
                     // No attack, but we might still need to transition to Action phase for AI
                     this.pyodide.runPython(`
@@ -3149,8 +3435,10 @@ class PrismataWeb {
             let selectedUnitId = null;
             let selectedAffordable = false;
 
-            // Swap action bar: End Turn -> BUY, SHOP -> EXIT SHOP
+            // Swap action bar: End Turn -> BUY, SHOP -> EXIT SHOP (Harvest hides until the shop closes)
             this.elements.btnEnd.style.display = 'none';
+            const harvestBtn = document.getElementById('btn-harvest');
+            if (harvestBtn) harvestBtn.classList.add('hidden');
             this.elements.btnBuy.querySelector('.btn-label').textContent = 'EXIT SHOP';
             this.elements.btnBuy.onclick = (e) => {
                 e.stopPropagation();
@@ -3418,7 +3706,12 @@ class PrismataWeb {
         // Main Game Buttons
         this.elements.btnEnd.onclick = () => {
             if (this.isTurnTransitioning || this.processingTurn) return;
-            this.sounds.play('CLICK');
+            // Safety check: ending an Action phase with unspent energy / untapped Energizers takes a second click
+            if (this._shouldConfirmEndTurn() && !this.endTurnArmed) {
+                this._armEndTurn();
+                return;
+            }
+            this._disarmEndTurn();
             this.handleEndTurn();
         };
         this.elements.btnBuy.onclick = () => {
@@ -3506,7 +3799,6 @@ class PrismataWeb {
         // Initialize Log Toggle
         if (this.elements.btnLogToggle) {
             this.elements.btnLogToggle.onclick = () => {
-                this.sounds.play('CLICK');
                 if (!this.elements.combatLogWrapper) return;
                 this.elements.combatLog.classList.toggle('expanded');
                 const isExpanded = this.elements.combatLog.classList.contains('expanded');
@@ -3518,7 +3810,6 @@ class PrismataWeb {
         const closeBtns = document.querySelectorAll('#shop-modal .close-btn');
         closeBtns.forEach(btn => {
             btn.onclick = () => {
-                this.sounds.play('CLICK');
                 this.hideShop();
             };
         });
@@ -3526,7 +3817,6 @@ class PrismataWeb {
         // Close shop modal on outside click
         this.elements.shopModal.onclick = (e) => {
             if (e.target === this.elements.shopModal) {
-                this.sounds.play('CLICK');
                 this.hideShop();
             }
         };
@@ -3544,7 +3834,6 @@ class PrismataWeb {
         };
 
         this.elements.btnSettings.onclick = () => {
-            this.sounds.play('CLICK');
             updateSettingsButtons(false);
 
             // Show/hide AI speed setting based on game mode
@@ -3571,7 +3860,6 @@ class PrismataWeb {
             });
 
             speedSlider.addEventListener('change', () => {
-                this.sounds.play('CLICK');
             });
         }
 
@@ -3582,34 +3870,29 @@ class PrismataWeb {
                 this._applyUIScale(scale);
             });
             this.elements.sliderUIScale.addEventListener('change', () => {
-                this.sounds.play('CLICK');
             });
         }
 
         const btnMainSettings = document.getElementById('btn-main-settings');
         if (btnMainSettings) {
             btnMainSettings.onclick = () => {
-                this.sounds.play('CLICK');
                 updateSettingsButtons(true);
                 this.elements.settingsModal.classList.remove('hidden');
             };
         }
 
         this.elements.closeSettings.onclick = () => {
-            this.sounds.play('CLICK');
             this.elements.settingsModal.classList.add('hidden');
         };
 
         // Close settings on outside click
         this.elements.settingsModal.onclick = (e) => {
             if (e.target === this.elements.settingsModal) {
-                this.sounds.play('CLICK');
                 this.elements.settingsModal.classList.add('hidden');
             }
         };
 
         this.elements.btnRestart.onclick = () => {
-            this.sounds.play('CLICK');
             this.elements.settingsModal.classList.add('hidden');
             this.resetGame();
             this.log("Game restarted.", "system");
@@ -3618,7 +3901,6 @@ class PrismataWeb {
         const btnExitMenu = document.getElementById('btn-exit-menu');
         if (btnExitMenu) {
             btnExitMenu.onclick = () => {
-                this.sounds.play('CLICK');
                 this._abandonGame(); // Stop a running AI turn from continuing in the background
                 this.elements.settingsModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
@@ -3639,9 +3921,19 @@ class PrismataWeb {
             this.sounds.setSFXVolume(e.target.value / 100);
         };
 
+        const harvestBtn = document.getElementById('btn-harvest');
+        if (harvestBtn) harvestBtn.onclick = () => this._harvest();
+        const blockAllBtn = document.getElementById('btn-block-all');
+        if (blockAllBtn) blockAllBtn.onclick = () => this._blockAll();
+        const blockClearBtn = document.getElementById('btn-block-clear');
+        if (blockClearBtn) blockClearBtn.onclick = () => this._clearBlocks();
+        const rematchBtn = document.getElementById('btn-endgame-rematch');
+        if (rematchBtn) rematchBtn.onclick = () => this._requestRematch();
+        this._initCardTilt();
+        this._initBackgroundFx();
+
         if (this.elements.btnEndgameMenu) {
             this.elements.btnEndgameMenu.onclick = () => {
-                this.sounds.play('CLICK');
                 this._abandonGame();
                 this.elements.endgameModal.classList.add('hidden');
                 this.elements.app.classList.add('hidden');
@@ -3656,7 +3948,6 @@ class PrismataWeb {
 
         if (this.elements.btnHowToPlay) {
             this.elements.btnHowToPlay.onclick = () => {
-                this.sounds.play('CLICK');
                 this.startTutorial();
             };
         }
@@ -3668,27 +3959,43 @@ class PrismataWeb {
             return;
         }
         this.sounds.play('VICTORY');
+        const s = this.state;
+        const localSeat = this._localSeat();
+        const winnerSeat = s.winnerIsP1 ? 'p1' : 'p2';
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
-        let winnerName = this.state.winner;
-        let winnerState = this.state.winnerIsP1 ? this.state.p1 : this.state.p2;
-
-        let startingUnits = 2; // Miner, Energizer
-        if (!this.state.winnerIsP1) startingUnits = 3; // + Barrier
-
-        let totalAcquired = 0;
-        if (winnerState && winnerState.lifetime) {
-            for (let unitType in winnerState.lifetime) {
-                totalAcquired += winnerState.lifetime[unitType];
-            }
+        // Result banner: VICTORY / DEFEAT for the local player, "<name> WINS" when both seats are local
+        let title = `${String(s.winner || '').toUpperCase()} WINS`, kind = 'win';
+        if (localSeat) {
+            const won = winnerSeat === localSeat;
+            title = won ? 'VICTORY' : 'DEFEAT';
+            kind = won ? 'win' : 'loss';
         }
-        let unitsBought = Math.max(0, totalAcquired - startingUnits);
+        set('endgame-title', title);
+        set('endgame-sub', `${s.winner} destroyed the enemy base on turn ${s.turn}`);
+        const banner = document.getElementById('endgame-banner');
+        if (banner) banner.className = `endgame-banner ${kind}`;
 
-        if (this.elements.endgameWinner) this.elements.endgameWinner.textContent = `Winner: ${winnerName} `;
-        if (this.elements.endgameTurns) this.elements.endgameTurns.textContent = this.state.turn;
-        if (this.elements.endgameUnits) this.elements.endgameUnits.textContent = unitsBought;
-        if (this.elements.endgameGold) this.elements.endgameGold.textContent = winnerState ? winnerState.gold : 0;
-        if (this.elements.endgameEnergy) this.elements.endgameEnergy.textContent = winnerState ? winnerState.energy : 0;
+        // Match stats for both players (starting units: Miner + Energizer, seat 2 also a Barrier)
+        const bought = seat => {
+            const lifetime = s[seat].lifetime || {};
+            const total = Object.keys(lifetime).reduce((n, k) => n + lifetime[k], 0);
+            return Math.max(0, total - (seat === 'p1' ? 2 : 3));
+        };
+        ['p1', 'p2'].forEach(seat => {
+            set(`eg-${seat}-name`, s[seat].name);
+            set(`eg-${seat}-bought`, bought(seat));
+            set(`eg-${seat}-dmg`, this._damageDealt[seat]);
+            set(`eg-${seat}-kills`, this._unitsKilled[seat]);
+            document.querySelectorAll(`.eg-col-${seat}`).forEach(el => el.classList.toggle('winner', seat === winnerSeat));
+        });
+        set('eg-turns', s.turn);
 
+        const rematchBtn = document.getElementById('btn-endgame-rematch');
+        if (rematchBtn) {
+            rematchBtn.disabled = false;
+            rematchBtn.textContent = 'PLAY AGAIN';
+        }
         if (this.elements.endgameModal) this.elements.endgameModal.classList.remove('hidden');
     }
 
@@ -3946,12 +4253,10 @@ class PrismataWeb {
         overlay.onclick = (e) => {
             if (e.target.closest('.tutorial-btn')) return;
             overlay.classList.toggle('top');
-            this.sounds.play('CLICK');
         };
 
         if (buttonText && onClick) {
             overlay.querySelector('.tutorial-btn').onclick = () => {
-                this.sounds.play('CLICK');
                 onClick();
             };
         }

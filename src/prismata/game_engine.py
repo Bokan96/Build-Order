@@ -360,6 +360,19 @@ class GameEngine:
         total_block = sum(u.block for u in self.blocking_units)
         defender.displayed_block = total_block
         return True, f"Assigned blockers. Total block: {total_block}"
+
+    def clear_blockers(self):
+        """Take back every blocker assigned this Block phase (before blocking is finished)."""
+        if self.game.phase != "Block":
+            return False, "Can only clear blockers during Block Phase"
+        for u in self.blocking_units:
+            if u.name == "Wall":
+                u.ready()  # assign_blockers exhausted it
+            if u.fragile:
+                u.damage_taken = 0  # undo the Barrier's self-destruct
+        self.blocking_units = []
+        self.game.current_player.displayed_block = 0
+        return True, "Blockers cleared"
         
     def resolve_combat(self, damage_assignments):
         """

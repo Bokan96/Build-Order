@@ -610,8 +610,8 @@ button,
 
 /* Cards within column stack with overlap */
 .unit-column .unit-card {
-    margin-top: calc(var(--card-h) * -0.68);
-    /* Overlap cards like solitaire (~32% of each stacked card stays visible) */
+    margin-top: calc(var(--card-h) * -0.86);
+    /* Tight stack: a thin strip of each buried card shows; the stack badge gives the count */
 }
 
 .unit-column .unit-card:first-child {
@@ -634,7 +634,7 @@ button,
     /* Remove hover lift and old margins */
     box-shadow: none !important;
     border-color: var(--glass-border) !important;
-    margin-top: calc(var(--card-h) * -0.68);
+    margin-top: calc(var(--card-h) * -0.86);
     /* Match standard card overlap */
 }
 
@@ -2307,7 +2307,7 @@ body.lockout .unit-card.interactive {
     }
 
     .unit-column .unit-card {
-        margin-top: calc(var(--m-card-w) * -0.84);
+        margin-top: calc(var(--m-card-w) * -1.2);
     }
 
     /* Compact Stats Bar */
@@ -3439,4 +3439,195 @@ body.lockout .unit-card.interactive {
     .shop-static-preview-container {
         display: none;
     }
+}
+
+
+/* =====================================================================
+   0.8.6: loop helpers, end-turn confirm, tilt, living background, end screen
+   ===================================================================== */
+
+/* Small helper buttons (Harvest, Block all, Clear) next to the main ones */
+.action-btn.helper-btn {
+    padding: 0.7rem 1.2rem;
+    font-size: 0.85rem;
+    background: rgba(12, 18, 36, 0.9);
+    border: 1px solid rgba(0, 242, 255, 0.45);
+    color: #bff6ff;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.action-btn.helper-btn:hover {
+    background: rgba(0, 242, 255, 0.14);
+    border-color: var(--accent-primary);
+}
+
+.action-btn.helper-btn.hidden {
+    display: none;
+}
+
+#btn-block-clear {
+    border-color: rgba(255, 120, 120, 0.5);
+    color: #ffd0d0;
+}
+
+/* END TURN asking for a confirming click */
+.action-btn.confirm {
+    background: linear-gradient(135deg, #5a3a06, #8a5a0a) !important;
+    border: 1px solid #ffb14a !important;
+    color: #fff !important;
+    animation: confirm-blink 0.9s ease-in-out infinite;
+    text-transform: none;
+    font-size: 0.85rem;
+}
+
+@keyframes confirm-blink {
+    0%, 100% { box-shadow: 0 0 6px rgba(255, 177, 74, 0.5); }
+    50%      { box-shadow: 0 0 18px rgba(255, 177, 74, 0.9); }
+}
+
+/* Living background: embers behind the board, seam pulse while an attack is pending */
+#bg-fx {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.9;
+}
+
+.game-board > .player-area,
+.game-board > .player-separator {
+    position: relative;
+    z-index: 1;
+}
+
+.player-separator::before {
+    transition: background 0.4s;
+}
+
+.game-board.attack-pending .player-separator::before {
+    background: linear-gradient(to bottom, rgba(255, 80, 80, 0.7), rgba(255, 80, 80, 0.15), transparent);
+    box-shadow: 0 0 14px rgba(255, 60, 60, 0.5);
+    animation: seam-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes seam-pulse {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+}
+
+/* 3D tilt on hover (desktop): composes with the `rotate` used for tapping */
+.unit-card.tilt {
+    transform: perspective(700px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) translateZ(6px);
+    transition: transform 0.08s ease-out, box-shadow 0.2s, border-color 0.2s;
+    z-index: 60;
+}
+
+.unit-card.tilt::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 30;
+    background: radial-gradient(circle at var(--sx, 50%) var(--sy, 50%), rgba(255, 255, 255, 0.22), transparent 55%);
+}
+
+/* End screen */
+.endgame-content {
+    width: calc(560px * var(--ui-scale));
+    text-align: center;
+    padding: 0 0 1.4rem;
+    overflow: hidden;
+}
+
+.endgame-banner {
+    padding: 1.6rem 1rem 1.1rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, rgba(0, 242, 255, 0.18), transparent);
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.endgame-banner.loss {
+    background: linear-gradient(180deg, rgba(255, 62, 62, 0.2), transparent);
+}
+
+.endgame-banner h1 {
+    margin: 0;
+    font-size: calc(3rem * var(--ui-scale));
+    letter-spacing: 6px;
+    background: linear-gradient(135deg, #fff, var(--accent-primary));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.endgame-banner.loss h1 {
+    background: linear-gradient(135deg, #fff, #ff6b6b);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+.endgame-banner p {
+    margin: 0.4rem 0 0;
+    color: var(--text-dim);
+}
+
+.endgame-table {
+    width: calc(100% - 3rem);
+    margin: 0 auto;
+    border-collapse: collapse;
+    font-size: calc(1rem * var(--ui-scale));
+}
+
+.endgame-table th,
+.endgame-table td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.endgame-table td:first-child {
+    text-align: left;
+    color: var(--text-dim);
+}
+
+.endgame-table th {
+    font-weight: 800;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.endgame-table .eg-col-p1 { color: var(--accent-primary); }
+.endgame-table .eg-col-p2 { color: #c77dff; }
+.endgame-table td.winner { font-weight: 800; }
+.endgame-table th.winner::after { content: ' 👑'; }
+
+.endgame-turns {
+    margin: 0.8rem 0 0;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+}
+
+.endgame-actions {
+    display: flex;
+    gap: 0.8rem;
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.endgame-actions .menu-btn {
+    margin-top: 0 !important;
+    min-width: 170px;
+}
+
+@media (max-width: 768px) {
+    #btn-harvest .btn-label { display: none; }
+    .action-btn.helper-btn { padding: 0.6rem 0.8rem; }
+    .action-btn.confirm { font-size: 0.7rem; }
+    .endgame-content { width: 95vw; }
+    .endgame-actions { flex-direction: column; align-items: stretch; padding: 0 1rem; }
 }

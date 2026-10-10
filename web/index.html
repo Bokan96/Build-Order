@@ -10,8 +10,8 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=0.8.5">
-    <link rel="stylesheet" href="effects.css?v=0.8.5">
+    <link rel="stylesheet" href="style.css?v=0.8.6">
+    <link rel="stylesheet" href="effects.css?v=0.8.6">
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self' https://cdn.jsdelivr.net https://unpkg.com; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com wss://0.peerjs.com https://0.peerjs.com https://unpkg.com;">
     <link rel="icon" type="image/webp" href="favicon.webp">
@@ -39,7 +39,7 @@
                 <img src="assets/UI/logo.png" alt="Build Order" class="menu-logo-img">
             </div>
             <div class="game-description">
-                <p>Version 0.8.5 - Clearer, more intuitive UI</p>
+                <p>Version 0.8.6 - Smoother turns</p>
             </div>
             <div class="menu-buttons">
                 <button id="btn-online" class="menu-btn secondary">
@@ -220,6 +220,7 @@
         </header>
 
         <main class="game-board">
+            <canvas id="bg-fx" aria-hidden="true"></canvas>
             <!-- Turn Transition Banner -->
             <div id="turn-banner" class="hidden">
                 <h1 id="turn-banner-text">PLAYER 1'S TURN</h1>
@@ -296,6 +297,9 @@
                 </div>
                 <div id="turn-hint" class="turn-hint" aria-live="polite"></div>
                 <div class="main-buttons">
+                    <button id="btn-block-all" class="action-btn helper-btn hidden" title="Block with every ready unit">BLOCK ALL</button>
+                    <button id="btn-block-clear" class="action-btn helper-btn hidden" title="Take back your blockers">CLEAR</button>
+                    <button id="btn-harvest" class="action-btn helper-btn hidden" title="Tap all Energizers, then Miners"><span class="btn-icon">⚡</span><span class="btn-label">HARVEST</span></button>
                     <button id="btn-buy" class="action-btn shop-btn"><span class="btn-label">SHOP</span><span
                             id="buys-chip" class="buys-chip hidden"></span></button>
                     <button id="btn-end" class="action-btn accent">END TURN</button>
@@ -339,50 +343,41 @@
 
 
         <div id="endgame-modal" class="modal hidden">
-            <div class="modal-content glass settings-content" style="text-align: center;">
-                <div class="modal-header" style="justify-content: center;">
-                    <h2>GAME OVER</h2>
+            <div class="modal-content glass endgame-content">
+                <div id="endgame-banner" class="endgame-banner win">
+                    <h1 id="endgame-title">VICTORY</h1>
+                    <p id="endgame-sub"></p>
                 </div>
-                <div class="settings-body" style="align-items: center; gap: 1.5rem;">
-                    <div id="endgame-winner"
-                        style="font-size: 2rem; color: var(--accent-primary); font-weight: bold; margin-bottom: 20px;">
-                        Winner: Player 1</div>
-
-                    <div class="endgame-stats"
-                        style="display: flex; gap: 2rem; justify-content: center; width: 100%; flex-wrap: wrap; margin-bottom: 20px;">
-                        <div class="stat-box glass"
-                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px;">
-                            <div style="color: var(--text-dim); font-size: 0.9rem;">TURNS TAKEN</div>
-                            <div id="endgame-turns"
-                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-secondary);">0</div>
-                        </div>
-                        <div class="stat-box glass"
-                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px;">
-                            <div style="color: var(--text-dim); font-size: 0.9rem;">WINNER UNITS BOUGHT</div>
-                            <div id="endgame-units"
-                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-green);">0</div>
-                        </div>
-                    </div>
-
-                    <div class="endgame-stats"
-                        style="display: flex; gap: 2rem; justify-content: center; width: 100%; flex-wrap: wrap; margin-bottom: 20px;">
-                        <div class="stat-box glass"
-                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px; display: none;">
-                            <div style="color: var(--text-dim); font-size: 0.9rem;">WINNER END GOLD</div>
-                            <div id="endgame-gold"
-                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-secondary);">0</div>
-                        </div>
-                        <div class="stat-box glass"
-                            style="padding: 1rem; border-radius: 8px; border: 1px solid var(--glass-border); flex: 1; min-width: 120px; display: none;">
-                            <div style="color: var(--text-dim); font-size: 0.9rem;">WINNER END ENERGY</div>
-                            <div id="endgame-energy"
-                                style="font-size: 1.5rem; font-weight: bold; color: var(--accent-primary);">0</div>
-                        </div>
-                    </div>
-
-                    <div class="settings-actions">
-                        <button id="btn-endgame-main-menu" class="menu-btn primary">RETURN TO MAIN MENU</button>
-                    </div>
+                <table class="endgame-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th class="eg-col-p1" id="eg-p1-name">Player 1</th>
+                            <th class="eg-col-p2" id="eg-p2-name">Player 2</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Units bought</td>
+                            <td class="eg-col-p1" id="eg-p1-bought">0</td>
+                            <td class="eg-col-p2" id="eg-p2-bought">0</td>
+                        </tr>
+                        <tr>
+                            <td>Base damage dealt</td>
+                            <td class="eg-col-p1" id="eg-p1-dmg">0</td>
+                            <td class="eg-col-p2" id="eg-p2-dmg">0</td>
+                        </tr>
+                        <tr>
+                            <td>Units destroyed</td>
+                            <td class="eg-col-p1" id="eg-p1-kills">0</td>
+                            <td class="eg-col-p2" id="eg-p2-kills">0</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="endgame-turns">Turns played: <span id="eg-turns">0</span></p>
+                <div class="settings-actions endgame-actions">
+                    <button id="btn-endgame-rematch" class="menu-btn primary">PLAY AGAIN</button>
+                    <button id="btn-endgame-main-menu" class="menu-btn secondary">MAIN MENU</button>
                 </div>
             </div>
         </div>
@@ -402,7 +397,7 @@
     </div>
 
     <script src="multiplayer.js?v=0.8.2"></script>
-    <script type="module" src="app.js?v=0.8.5"></script>
+    <script type="module" src="app.js?v=0.8.6"></script>
 </body>
 
 </html>
