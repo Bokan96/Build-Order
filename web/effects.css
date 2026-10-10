@@ -260,6 +260,38 @@
     cursor: pointer;
 }
 
+/* ===== AI breach: the unit (or base) the AI is about to hit ===== */
+.unit-card.ai-target {
+    outline: 3px solid rgba(255, 70, 70, 0.95) !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 22px rgba(255, 60, 60, 0.8) !important;
+    animation: ai-target-pulse 0.5s ease-in-out infinite alternate;
+    z-index: 120 !important;
+}
+
+.unit-card.ai-target::before {
+    content: '🎯';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    font-size: calc(2.4rem * var(--ui-scale));
+    z-index: 40;
+    pointer-events: none;
+    filter: drop-shadow(0 0 6px #000);
+}
+
+.player-stats-bar.ai-target {
+    border-color: #ff4646 !important;
+    box-shadow: 0 0 24px rgba(255, 60, 60, 0.7) !important;
+    animation: ai-target-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes ai-target-pulse {
+    from { filter: brightness(1); }
+    to   { filter: brightness(1.35); }
+}
+
 /* ===== AI activity: glow on the card it just used, dots while it thinks ===== */
 /* An outline ring, since tapped cards force box-shadow: none !important */
 .unit-card.ai-acted {

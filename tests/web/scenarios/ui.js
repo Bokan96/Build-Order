@@ -96,6 +96,43 @@ const ui = (b) => b.eval(`(() => { const q = s => document.querySelector(s); con
             const embers = await b.eval(`(() => { const c = document.getElementById('bg-fx'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let lit = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) lit++; return lit; })()`);
             check(embers === 0, `reduced motion: embers off (${embers})`);
         }
+        if (which === 'ai-breach') {
+            // AI attacks, nothing can block: each target is highlighted before it is hit
+            await boot(b, 'ai');
+            await b.eval(`window.gameApp.aiSpeed = '1'; true`); // 600 ms target highlight
+            await py(b, ["from prismata.units import create_unit", "for i in range(2):", "    x = create_unit('striker'); x.exhausted = False; game.player2.units.append(x)", "game.player2.gold = 0", "game.player2.energy = 2", "for u in game.player1.units:", "    u.exhausted = True"]);
+            await b.eval(`window._ev = []; const t0 = performance.now(); new MutationObserver(ms => { for (const m of ms) { const el = m.target; if (!(el instanceof Element)) continue; const inP1 = !!el.closest('#p1-units'); const isPlate = el.matches('#player-area .player-stats-bar'); if (!inP1 && !isPlate) continue; const tag = isPlate ? 'plate' : (el.dataset.type || ''); if (el.classList.contains('ai-target')) window._ev.push(['target', tag, Math.round(performance.now() - t0)]); if (el.classList.contains('unit-destroy')) window._ev.push(['destroy', tag, Math.round(performance.now() - t0)]); } }).observe(document.body, { attributes: true, attributeFilter: ['class'], subtree: true }); true`);
+            await endTurn(b);
+            const done = await b.waitFor(`window.gameApp.state.currentIsP1 && window.gameApp.state.phase === 'Action' && !window.gameApp.processingTurn && window.gameApp.state.p1.hp < 10`, 120000);
+            const ev = await b.eval('window._ev');
+            const hintSeen = await b.eval(`Array.from(document.querySelectorAll('#combat-log .log-entry')).some(e => /AI targets your Miner/.test(e.textContent))`);
+            console.log('  events:', JSON.stringify(ev));
+            const i = (k, t) => ev.findIndex(e => e[0] === k && e[1] === t);
+            check(!!done, 'breach resolved and P1 got the turn back');
+            check(i('target', 'miner') >= 0 && i('destroy', 'miner') > i('target', 'miner'), 'Miner highlighted before being destroyed');
+            check(i('target', 'miner') >= 0 && ev[i('destroy', 'miner')][2] - ev[i('target', 'miner')][2] >= 500, 'highlight lasts the target delay');
+            check(i('target', 'plate') > i('destroy', 'miner'), 'base highlighted after the Miner, before the hit');
+            check(hintSeen, 'targets are logged');
+            const s = await ui(b);
+            check(s.pips[0][1] === 1 && !(await b.eval(`window.gameApp.state.p1.units.some(u => u.type === 'miner' && u.isAlive)`)), 'Miner gone, base lost 1');
+            await b.shot('ui_ai_breach_after');
+        }
+        if (which === 'menu') {
+            // The main menu must fit common desktop sizes without cropping its buttons
+            await b.goto(BASE);
+            await b.waitFor('window.gameApp && window.gameApp.isLoaded', 90000);
+            await sleep(1200);
+            await b.eval(`document.getElementById('btn-tutorial-no')?.click(); true`);
+            for (const [w, h, scale] of [[1366, 768, 0.85], [1280, 720, 1.0], [1536, 864, 1.0], [1920, 1080, 1.4]]) {
+                await b.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+                await b.eval(`window.gameApp._applyUIScale(${scale}); true`);
+                await sleep(400);
+                const m = await b.eval(`(() => { const c = document.querySelector('#welcome-screen .menu-container').getBoundingClientRect(); const btn = document.getElementById('btn-how-to-play').getBoundingClientRect(); return { top: Math.round(c.top), bottom: Math.round(c.bottom), vh: innerHeight, lastBtnVisible: btn.bottom <= innerHeight && btn.top >= 0 }; })()`);
+                console.log(`  ${w}x${h} @${scale}:`, JSON.stringify(m));
+                check(m.top >= 0 && m.bottom <= m.vh && m.lastBtnVisible, `menu fits ${w}x${h} at scale ${scale}`);
+                if (w === 1366) await b.shot('ui_menu_1366x768');
+            }
+        }
         if (mobile || land) {
             await boot(b, 'hotseat');
             await py(b, ["from prismata.units import create_unit", "for t in ['striker', 'guard', 'wall']:", "    u = create_unit(t); u.exhausted = False; game.player1.units.append(u)", "game.player1.gold = 6"]);

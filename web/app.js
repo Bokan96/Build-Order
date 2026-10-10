@@ -902,6 +902,11 @@ class PrismataWeb {
             if r_game_mode != "HOTSEAT":
                 ai = Agent(r_ai_type, logger=DummyLogger(), interactive=False)
             
+            # The AI's breach plan as [[target_type, damage], ...] so the UI can show each pick
+            def ai_plan_breach():
+                unblocked = sum(u.attack for u in engine.attacking_units) - sum(u.block for u in engine.blocking_units)
+                return [[t, int(d)] for t, d in ai.assign_damage(game, engine, unblocked)]
+
             # Helper to get state as dict for JS
             def get_ui_bundle():
                 def serialize_player(p):
@@ -991,8 +996,10 @@ class PrismataWeb {
         this.isTurnTransitioning = false;
         this.tutorialHold = false;
         this.aiThinking = false;
+        this.aiTargeting = false;
         const aiPlate = document.querySelector('#opponent-area .player-stats-bar');
         if (aiPlate) aiPlate.classList.remove('thinking');
+        document.querySelectorAll('.ai-target').forEach(el => el.classList.remove('ai-target'));
         this._flyingUids.clear();
         this._recapStart = null;
         this._disarmEndTurn();
@@ -1535,7 +1542,8 @@ class PrismataWeb {
                 // Interaction Logic
                 const canActInAction = isFriendly && this.state.phase === 'Action' && (!isExhausted || unit.type === 'wall' || unit.usedThisTurn);
                 const canBlockInBlock = isFriendly && !isExhausted && this.state.phase === 'Block' && unit.blk > 0 && !isBlocking;
-                const canDamageInBreach = !isFriendly && this.state.phase === 'Breach' && unit.hp > 0;
+                // Breach targets are only clickable when the local human is the attacker (not during the AI's breach)
+                const canDamageInBreach = !isFriendly && this.state.phase === 'Breach' && unit.hp > 0 && this._isMyTurn();
 
                 let isInteractive = false;
 
@@ -1603,8 +1611,8 @@ class PrismataWeb {
                 column.appendChild(stackBadge);
             }
 
-            // Check if column is vulnerable in breach
-            if (!isFriendly && this.state.phase === 'Breach') {
+            // Check if column is vulnerable in breach (only for the local human attacker)
+            if (!isFriendly && this.state.phase === 'Breach' && this._isMyTurn()) {
                 const combat = this.state.combat;
                 const remaining = Math.max(0, combat.atk - combat.blk - combat.assigned);
                 let canDamageColumn = false;
@@ -2293,6 +2301,7 @@ class PrismataWeb {
         // Just the tip, no player names
         if (!this._isMyTurn()) {
             if (this.gameMode === 'AI') {
+                if (this.aiTargeting) return 'AI is choosing targets…';
                 if (s.phase === 'Block') return 'AI is choosing blockers…';
                 return this.aiThinking ? 'AI is thinking…' : 'AI is playing its turn…';
             }
@@ -2363,7 +2372,9 @@ class PrismataWeb {
             const remaining = Math.max(0, (combat.atk - combat.blk) - combat.assigned);
             // Preview the defender's base after the hit (the defender is the non-active seat during Breach)
             const defender = this.isP1Turn() ? this.state.p2 : this.state.p1;
-            this.elements.btnEnd.textContent = `ATTACK BASE ${remaining} ⚔️ → ❤️${Math.max(0, defender.hp - remaining)}`;
+            this.elements.btnEnd.textContent = isMyTurn
+                ? `ATTACK BASE ${remaining} ⚔️ → ❤️${Math.max(0, defender.hp - remaining)}`
+                : 'OPPONENT IS ATTACKING…';
             this.elements.btnEnd.classList.add('important');
         } else if (!this.endTurnArmed) {
             this.elements.btnEnd.textContent = "END TURN";
@@ -2904,15 +2915,11 @@ class PrismataWeb {
                         return;
                     }
 
-                    // AI attacked, P1 defended, now AI (Attacker) assigns
+                    // AI attacked, P1 defended, now the AI (attacker) picks its targets one at a time, visibly
                     this.log("AI is assigning damage...", "system");
-                    const aiResult = this.pyodide.runPython(`
-                        assignments = ai.assign_damage(game, engine, sum(u.attack for u in engine.attacking_units) - sum(u.block for u in engine.blocking_units))
-                        success, msg = engine.resolve_combat(assignments)
-                        engine.end_phase()
-                        msg
-                    `);
-                    this.log(`AI Result: ${aiResult}`, "opponent");
+                    if (!(await this._runAIBreach(session))) return;
+                    const endMsg = this.pyodide.runPython(`engine.end_phase()`);
+                    if (/lost:/.test(endMsg)) this.log(endMsg.replace(/^End Phase: /, ''), 'opponent');
                     this.pyodide.runPython(`engine.action_phase()`);
                 } else {
                     this.log(res.msg, "system");
@@ -3040,6 +3047,66 @@ class PrismataWeb {
             this.log("Error processing turn: " + error.message, "important");
         } finally {
             this._endProcessing(session);
+        }
+    }
+
+    // The AI assigns breach damage target by target: each unit is highlighted (with a chip saying so)
+    // before it is destroyed, and the base is highlighted before it takes the leftover damage.
+    // Returns false if the game was abandoned meanwhile.
+    async _runAIBreach(session) {
+        const planProxy = this.pyodide.runPython('ai_plan_breach()');
+        const plan = planProxy.toJs();
+        planProxy.destroy();
+        const targetDelay = { '0': 900, '1': 600, '2': 250 }[this.aiSpeed] ?? 600;
+        const plate = document.querySelector('#player-area .player-stats-bar');
+        this.aiTargeting = true;
+        this.syncState();
+        this.updateUI(); // show the Breach phase (tracker, meter, hint) before the first pick
+        try {
+            for (const [type, dmg] of plan) {
+                if (type === 'base') {
+                    this.log(`AI targets your base for ${dmg}`, 'opponent');
+                    this.sounds.play('PREPARE_ATTACK');
+                    if (plate) plate.classList.add('ai-target');
+                    if (!(await this._waitSession(targetDelay, session))) return false;
+                    if (plate) plate.classList.remove('ai-target');
+                    this._runPy(`engine.resolve_combat([("base", r_dmg)])`, { r_dmg: dmg });
+                    this.syncState();
+                    this.updateUI(); // shake, red flash and the damage popup come from updatePlayerStats
+                    if (!(await this._waitSession(500, session))) return false;
+                    continue;
+                }
+                const name = type.charAt(0).toUpperCase() + type.slice(1);
+                const col = document.getElementById(`p1-units-${type}-col`);
+                // resolve_combat removes the first alive unit of the type, i.e. the lowest unit number on the board
+                const card = col ? Array.from(col.querySelectorAll('.unit-card')).sort((a, b) => +a.dataset.unitNumber - +b.dataset.unitNumber)[0] : null;
+                this.log(`AI targets your ${name}`, 'opponent');
+                this.sounds.play('PREPARE_ATTACK');
+                if (card) {
+                    card.classList.add('ai-target');
+                    card.dataset.hint = `🎯 AI targets ${name}`;
+                    this._showActionChip(card);
+                }
+                if (!(await this._waitSession(targetDelay, session))) return false;
+                this._hideActionChip();
+                if (card) {
+                    card.classList.remove('ai-target');
+                    card.classList.add('unit-destroy');
+                    this.sounds.play('DESTROY');
+                    if (!(await this._waitSession(600, session))) return false;
+                }
+                this._runPy(`engine.resolve_combat([(r_type, r_dmg)])`, { r_type: type, r_dmg: dmg });
+                this.syncState();
+                this.updateUI(); // the diff pops "-N" where the card was and counts the kill
+                if (!(await this._waitSession(200, session))) return false;
+            }
+            return true;
+        } finally {
+            if (session === this.gameSession) {
+                this.aiTargeting = false;
+                if (plate) plate.classList.remove('ai-target');
+                this._hideActionChip();
+            }
         }
     }
 
