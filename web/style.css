@@ -3631,3 +3631,45 @@ body.lockout .unit-card.interactive {
     .endgame-content { width: 95vw; }
     .endgame-actions { flex-direction: column; align-items: stretch; padding: 0 1rem; }
 }
+
+
+/* Landscape phones: the end screen must fit (or scroll) in ~390px of height */
+@media (orientation: landscape) and (max-height: 500px) {
+    .endgame-content {
+        width: 72vw;
+        max-height: 94vh;
+        overflow-y: auto;
+        padding-bottom: 0.8rem;
+    }
+
+    .endgame-banner {
+        padding: 0.6rem 1rem 0.5rem;
+        margin-bottom: 0.4rem;
+    }
+
+    .endgame-banner h1 {
+        font-size: 1.6rem;
+        letter-spacing: 3px;
+    }
+
+    .endgame-table th,
+    .endgame-table td {
+        padding: 0.2rem 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .endgame-turns {
+        margin-top: 0.4rem;
+    }
+
+    .endgame-actions {
+        flex-direction: row;
+        margin-top: 0.5rem;
+    }
+
+    .endgame-actions .menu-btn {
+        min-width: 0;
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+}
