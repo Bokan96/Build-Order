@@ -19,7 +19,7 @@ const GROUPS = [
     ['tutorial:desktop', 'tutorial:mobile', 'loop:hotseat', 'loop:ai'],
     ['ui:desktop', 'ui:hotseat-combat', 'ui:reduced', 'ui:mobile', 'ui:landscape'],
 ];
-if (online) GROUPS.push(['online:']);
+if (online || (only && only.some(o => o.startsWith('online')))) GROUPS.push(['online:']);
 
 const freePort = () => new Promise(res => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
 
