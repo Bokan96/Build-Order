@@ -35,3 +35,8 @@ Thumbs.db
 .idea/
 .agent/
 /web/assets/cards/older versions
+
+# Web play-test artefacts
+tests/web/.profiles/
+tests/web/shots/
+node_modules/

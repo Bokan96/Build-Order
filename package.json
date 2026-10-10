@@ -1,0 +1,14 @@
+{
+  "name": "build-order",
+  "version": "0.8.6",
+  "private": true,
+  "description": "Build Order: a 2-player strategy card game (Python engine via Pyodide, vanilla JS UI)",
+  "scripts": {
+    "serve": "python -m http.server 3500 --bind 127.0.0.1",
+    "check": "node --check web/app.js && node --check web/multiplayer.js",
+    "test": "node tests/web/run.js",
+    "test:online": "node tests/web/run.js --online",
+    "test:engine": "python tests/engine_checks.py",
+    "screens": "node tests/web/screens.js"
+  }
+}
