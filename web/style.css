@@ -1562,11 +1562,13 @@ body.lockout .unit-card.interactive {
     inset: 0;
     background: radial-gradient(circle at center, #1b1e2b 0%, #0a0b10 100%);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
     z-index: 500;
     transition: opacity 0.5s ease;
-    overflow: hidden;
+    /* Never hide the bottom buttons on a short screen: scroll instead */
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 /* Parallax card sprites injected by JS */
@@ -1611,11 +1613,14 @@ body.lockout .unit-card.interactive {
     z-index: 1;
     max-width: calc(910px * var(--ui-scale));
     width: 90%;
-    padding: calc(2.6rem * var(--ui-scale));
+    max-height: 96vh;
+    overflow-y: auto;
+    /* Padding, logo and buttons shrink with screen height so the menu fits 720p laptops */
+    padding: min(calc(2.6rem * var(--ui-scale)), 3vh) calc(2.6rem * var(--ui-scale));
     border-radius: var(--radius-lg);
     border: 2px solid rgba(0, 242, 255, 0.3);
     text-align: center;
-    margin: auto;
+    margin: 2vh auto;
     background: url("data:image/svg+xml,%3Csvg width='28' height='49' viewBox='0 0 28 49' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2300f2ff' fill-opacity='0.03' fill-rule='evenodd'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/svg%3E"),
         linear-gradient(135deg, rgba(20, 24, 44, 0.85), rgba(10, 11, 20, 0.95));
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 30px rgba(0, 242, 255, 0.05);
@@ -1649,7 +1654,7 @@ body.lockout .unit-card.interactive {
 }
 
 .menu-logo-img {
-    max-width: 450px;
+    max-width: min(450px, 40vh);
     width: 100%;
     height: auto;
     margin: 0 auto 1rem auto;
@@ -1684,7 +1689,7 @@ body.lockout .unit-card.interactive {
 }
 
 .game-description {
-    margin: 1.3rem 0;
+    margin: min(1.3rem, 1.5vh) 0;
     line-height: 1.6;
     color: var(--text-dim);
     font-size: calc(1.3rem * var(--ui-scale));
@@ -1697,12 +1702,12 @@ body.lockout .unit-card.interactive {
 .menu-buttons {
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
-    margin-top: 1.5rem;
+    gap: min(0.8rem, 1vh);
+    margin-top: min(1.5rem, 2vh);
 }
 
 .menu-btn {
-    padding: calc(1.3rem * var(--ui-scale)) calc(2.6rem * var(--ui-scale));
+    padding: min(calc(1.3rem * var(--ui-scale)), 1.7vh) calc(2.6rem * var(--ui-scale));
     font-size: calc(1.4rem * var(--ui-scale));
     font-weight: 800;
     border: 2px solid transparent;
