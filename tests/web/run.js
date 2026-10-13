@@ -17,7 +17,7 @@ const only = args.includes('--only') && onlyArg ? onlyArg.split(',') : null;
 const GROUPS = [
     ['suite:hotseat', 'suite:victory', 'suite:restart', 'suite:names', 'suite:aiattack'],
     ['tutorial:desktop', 'tutorial:mobile', 'loop:hotseat', 'loop:ai'],
-    ['ui:desktop', 'ui:hotseat-combat', 'ui:reduced', 'ui:mobile', 'ui:landscape', 'ui:ai-breach', 'ui:menu'],
+    ['ui:desktop', 'ui:hotseat-combat', 'ui:reduced', 'ui:mobile', 'ui:landscape', 'ui:ai-breach', 'ui:menu', 'ui:snappy'],
 ];
 if (online || (only && only.some(o => o.startsWith('online')))) GROUPS.push(['online:']);
 

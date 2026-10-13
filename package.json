@@ -1,6 +1,6 @@
 {
   "name": "build-order",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "private": true,
   "description": "Build Order: a 2-player strategy card game (Python engine via Pyodide, vanilla JS UI)",
   "scripts": {

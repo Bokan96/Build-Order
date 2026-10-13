@@ -128,9 +128,10 @@ class PrismataWeb {
     }
 
     async init() {
-        this.initCustomCursor();
+
 
         const handleFirstInteraction = () => {
+            if (this.sounds) this.sounds.unlock();
             if (!this.hasInteracted) {
                 this.hasInteracted = true;
                 if (this.elements.welcomeScreen && !this.elements.welcomeScreen.classList.contains('hidden')) {
@@ -140,7 +141,9 @@ class PrismataWeb {
             window.removeEventListener('click', handleFirstInteraction);
             window.removeEventListener('keydown', handleFirstInteraction);
             window.removeEventListener('touchstart', handleFirstInteraction);
+            window.removeEventListener('pointerdown', handleFirstInteraction);
         };
+        window.addEventListener('pointerdown', handleFirstInteraction);
         window.addEventListener('click', handleFirstInteraction);
         window.addEventListener('keydown', handleFirstInteraction);
         window.addEventListener('touchstart', handleFirstInteraction);
@@ -181,6 +184,7 @@ class PrismataWeb {
                 }
             };
 
+            this.sounds.preload(); // decode sound effects for Web Audio (doesn't block loading)
             const preloadPromises = assetsToLoad.map(src => {
                 return new Promise((resolve) => {
                     if (src.endsWith('.mp3') || src.endsWith('.wav')) {
@@ -1101,21 +1105,30 @@ class PrismataWeb {
                     this.isTurnTransitioning = true; // Lock interaction
                     document.body.classList.add('lockout'); // Visual lockout
 
-                    setTimeout(() => {
-                        newBanner.classList.add('hidden');
+                    // Input unlocks well before the ribbon finishes: the short guard only absorbs a
+                    // double-click on END TURN. The tutorial keeps the full lock (its steps sync to it).
+                    const session = this.gameSession;
+                    const unlock = () => {
+                        if (session !== this.gameSession || !this.isTurnTransitioning) return;
                         this.isTurnTransitioning = false; // Unlock interaction
                         // Visual unlock, unless a turn (e.g. the AI's) is still being resolved
                         if (!this.processingTurn) document.body.classList.remove('lockout');
-
-                        // RE-UPDATE BUTTONS: Ensure buttons return to 1.0 opacity after transition ends
+                        // Buttons return to full opacity
                         this.updateActionButtons();
+                        this._skipEmptyBlockPhase();
+                    };
+                    if (!this.isTutorial) setTimeout(unlock, 450);
+
+                    setTimeout(() => {
+                        newBanner.classList.add('hidden');
+                        unlock();
 
                         if (this.isTutorial) {
                             this.tutorialHold = false; // The new turn is on screen; tutorial may update again
                             this.updateTutorialUI();
                             this.applyTutorialHighlights();
                         }
-                        this._skipEmptyBlockPhase();
+                        if (session === this.gameSession) this._skipEmptyBlockPhase();
                     }, 1200); // matches the ribbonIn animation in style.css
                 }
             };
@@ -1341,7 +1354,7 @@ class PrismataWeb {
         if (el._decrementInterval) clearInterval(el._decrementInterval);
         const diff = Math.abs(from - to);
         const steps = Math.min(diff, 20);
-        const stepDur = 600 / steps;
+        const stepDur = 250 / steps; // quick count so the number settles while you're still looking
         let cur = from;
         const dir = to < from ? -1 : 1;
         el._decrementInterval = setInterval(() => {
@@ -1762,6 +1775,21 @@ class PrismataWeb {
         }
     }
 
+    // Play the destroy animation on a fixed-position copy of a card (the real one is re-rendered away)
+    _destroyGhost(card) {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const r = card.getBoundingClientRect();
+        const w = card.offsetWidth;
+        const h = card.offsetHeight;
+        const ghost = card.cloneNode(true);
+        ghost.removeAttribute('id');
+        ghost.classList.remove('interactive', 'column-focus', 'tilt', 'exhausting-animation');
+        ghost.style.cssText = `position: fixed; left: ${r.left + r.width / 2 - w / 2}px; top: ${r.top + r.height / 2 - h / 2}px; width: ${w}px; height: ${h}px; margin: 0; z-index: 3000; pointer-events: none;`;
+        ghost.classList.add('unit-destroy', 'destroy-ghost');
+        document.body.appendChild(ghost);
+        setTimeout(() => ghost.remove(), 750);
+    }
+
     // Short-lived rising label (e.g. "+1🔋", "-2") at a screen position
     _spawnFloatText(x, y, text, kind) {
         const el = document.createElement('div');
@@ -1997,6 +2025,8 @@ class PrismataWeb {
         if (!s || s.phase !== 'Block' || s.gameOver || this.isTutorial || !this._isMyTurn()) return;
         if (this.processingTurn || this.isRemoteAction) return;
         const me = this.isP1Turn() ? s.p1 : s.p2;
+        // Only a phase nobody has touched: blockers already assigned (e.g. BLOCK ALL) are left alone
+        if (me.units.some(u => u.blocking) || (s.combat && s.combat.blk > 0)) return;
         if (me.units.some(u => u.isAlive && !u.exhausted && u.blk > 0)) return;
         this.log('No blockers ready: the attack goes through.', 'important');
         this.handleEndTurn();
@@ -2047,23 +2077,32 @@ class PrismataWeb {
 
     _initCardTilt() {
         const reduce = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        // Mouse moves fire faster than frames: keep the latest one and apply it once per frame
+        let pending = null, raf = 0;
+        const apply = () => {
+            raf = 0;
+            const e = pending;
+            pending = null;
+            if (!e || !this._canHover() || reduce()) return;
+            const card = e.target instanceof Element ? e.target.closest('.unit-card') : null;
+            if (this._tiltCard && this._tiltCard !== card) this._resetTilt();
+            if (!card || !card.isConnected || card.classList.contains('exhausted') || card.classList.contains('unit-shine') || card.classList.contains('unit-destroy')) return;
+            const r = card.getBoundingClientRect();
+            const px = (e.clientX - r.left) / r.width - 0.5;
+            const py = (e.clientY - r.top) / r.height - 0.5;
+            card.style.setProperty('--ty', `${(px * 14).toFixed(1)}deg`);
+            card.style.setProperty('--tx', `${(-py * 14).toFixed(1)}deg`);
+            card.style.setProperty('--sx', `${((px + 0.5) * 100).toFixed(0)}%`);
+            card.style.setProperty('--sy', `${((py + 0.5) * 100).toFixed(0)}%`);
+            card.classList.add('tilt');
+            this._tiltCard = card;
+        };
         [this.elements.p1Units, this.elements.p2Units].forEach(grid => {
             grid.addEventListener('mousemove', (e) => {
-                if (!this._canHover() || reduce()) return;
-                const card = e.target.closest('.unit-card');
-                if (this._tiltCard && this._tiltCard !== card) this._resetTilt();
-                if (!card || card.classList.contains('exhausted') || card.classList.contains('unit-shine') || card.classList.contains('unit-destroy')) return;
-                const r = card.getBoundingClientRect();
-                const px = (e.clientX - r.left) / r.width - 0.5;
-                const py = (e.clientY - r.top) / r.height - 0.5;
-                card.style.setProperty('--ty', `${(px * 14).toFixed(1)}deg`);
-                card.style.setProperty('--tx', `${(-py * 14).toFixed(1)}deg`);
-                card.style.setProperty('--sx', `${((px + 0.5) * 100).toFixed(0)}%`);
-                card.style.setProperty('--sy', `${((py + 0.5) * 100).toFixed(0)}%`);
-                card.classList.add('tilt');
-                this._tiltCard = card;
+                pending = e;
+                if (!raf) raf = requestAnimationFrame(apply);
             }, { passive: true });
-            grid.addEventListener('mouseleave', () => this._resetTilt(), { passive: true });
+            grid.addEventListener('mouseleave', () => { pending = null; this._resetTilt(); }, { passive: true });
         });
     }
 
@@ -2495,14 +2534,10 @@ class PrismataWeb {
                     }
 
                     if (unit.type === 'volatile' && animateCard) {
-                        animateCard.classList.add('unit-destroy');
+                        // The Volatile is gone from the state at once; its destruction plays on a copy
+                        // so the next click already acts on the updated board
+                        this._destroyGhost(animateCard);
                         this.sounds.play('DESTROY');
-                        // Delay sync slightly to let animation start
-                        setTimeout(() => {
-                            this.syncState();
-                            this.updateUI();
-                        }, 600);
-                        return;
                     }
                 } else {
                     this.log(`Error: ${result.msg}`, 'important');
@@ -3786,43 +3821,33 @@ class PrismataWeb {
             this.handleBuy();
         };
 
-        // Global visual click effect and sound
+        // Soft click sound on empty space (buttons and cards have their own sounds)
         document.body.addEventListener('mousedown', (e) => {
-            // Only play generic click if it's not a button or clickable card
             const isInteractable = e.target.closest('button') || e.target.closest('.close-btn') || e.target.closest('.unit-card');
-
-            if (!isInteractable) {
-                this.sounds.play('CLICK');
-
-                const offX = 11; // Offset to the right
-                const offY = 7; // Offset down
-
-                // Create Ripple Effect
-                const ripple = document.createElement('div');
-                ripple.className = 'click-ripple';
-                ripple.style.left = `${e.clientX + offX}px`;
-                ripple.style.top = `${e.clientY + offY}px`;
-                document.body.appendChild(ripple);
-
-                // Play particles
-                for (let i = 0; i < 5; i++) {
-                    const particle = document.createElement('div');
-                    particle.className = 'click-particle';
-                    particle.style.left = `${e.clientX + offX}px`;
-                    particle.style.top = `${e.clientY + offY}px`;
-                    const angle = Math.random() * Math.PI * 2;
-                    const distance = 20 + Math.random() * 30;
-                    particle.style.setProperty('--tx', `${Math.cos(angle) * distance}px`);
-                    particle.style.setProperty('--ty', `${Math.sin(angle) * distance}px`);
-                    document.body.appendChild(particle);
-                    setTimeout(() => particle.remove(), 600);
-                }
-
-                setTimeout(() => {
-                    ripple.remove();
-                }, 600);
-            }
+            if (!isInteractable) this.sounds.play('CLICK');
         });
+
+        // Cards act on mouse press, not release: the left button going down on a clickable card
+        // (or breach-target column) triggers its click handler at once, and the native click that
+        // follows on release is swallowed. Touch keeps tap-on-release so scrolling never acts.
+        let pressHandled = false;
+        document.addEventListener('pointerdown', (e) => {
+            if (e.pointerType !== 'mouse' || e.button !== 0) return;
+            let el = e.target instanceof Element ? e.target.closest('.unit-card, .unit-column') : null;
+            while (el && !el.onclick) el = el.parentElement && el.parentElement.closest('.unit-card, .unit-column');
+            if (!el) return;
+            pressHandled = true;
+            el.click();
+        }, true);
+        document.addEventListener('pointerup', () => {
+            if (pressHandled) setTimeout(() => { pressHandled = false; }, 0); // after the release's click
+        }, true);
+        document.addEventListener('click', (e) => {
+            if (!pressHandled || !e.isTrusted) return;
+            pressHandled = false;
+            e.stopPropagation();
+            e.preventDefault();
+        }, true);
 
         // Existing logic
         document.body.addEventListener('click', (e) => {
@@ -4353,46 +4378,6 @@ class PrismataWeb {
             el.classList.remove('tutorial-pulse');
         });
     }
-    initCustomCursor() {
-        const cursor = document.getElementById('custom-cursor');
-        if (!cursor) return;
-
-        let mouseX = -100;
-        let mouseY = -100;
-        let scale = 1;
-
-        const updateCursor = () => {
-            cursor.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0) scale(${scale})`;
-            requestAnimationFrame(updateCursor);
-        };
-        requestAnimationFrame(updateCursor);
-
-        window.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-            if (!cursor.classList.contains('active')) {
-                cursor.classList.add('active');
-            }
-        }, { passive: true });
-
-        window.addEventListener('mousedown', () => {
-            cursor.classList.add('holding');
-        }, { passive: true });
-
-        window.addEventListener('mouseup', () => {
-            cursor.classList.remove('holding');
-        }, { passive: true });
-
-        // Delegation for hover scaling - using mouseover to handle dynamically added elements
-        document.addEventListener('mouseover', (e) => {
-            const interactable = e.target.closest('button, .unit-card, .shop-list-item, .ai-choice, .close-btn, .icon-btn, .log-toggle-btn, .action-btn, .copy-btn, .settings-actions .menu-btn');
-            if (interactable) {
-                scale = 1.25;
-            } else {
-                scale = 1;
-            }
-        }, { passive: true });
-    }
 }
 
 
@@ -4413,10 +4398,10 @@ class SoundManager {
             'BLOCK': 'block.mp3',
             'DESTROY': 'destroy.mp3',
             'END_TURN': 'end_turn.mp3',
-            'BREACH': 'breach.mp3',
+            'BREACH': null, // no breach.mp3 in assets/sounds yet
             'ERROR': 'error.mp3',
             'VICTORY': 'victory.mp3',
-            'DEFEAT': 'defeat.mp3',
+            'DEFEAT': null, // no defeat.mp3 in assets/sounds yet
             'SHOP_OPEN': 'shop_open.wav',
             'HOVER': 'hover_short.mp3',
             'UNIT_HOVER': 'hover.wav',
@@ -4424,6 +4409,48 @@ class SoundManager {
         };
 
         this.bgMusic = null;
+
+        // Sound effects play from pre-decoded buffers through Web Audio (low latency, no per-play
+        // element/fetch); music stays on <audio>. Falls back to <audio> until buffers are ready.
+        this.ctx = null;
+        this.buffers = {};
+        this.offsets = {}; // seconds of leading silence to skip per sound
+        this.missing = new Set(); // files that don't exist: stay silent instead of re-requesting
+        this.played = 0; // Web Audio plays (for tests)
+        try {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) {
+                this.ctx = new AC({ latencyHint: 'interactive' });
+                this.gain = this.ctx.createGain();
+                this.gain.gain.value = this.sfxVolume;
+                this.gain.connect(this.ctx.destination);
+            }
+        } catch (e) {
+            this.ctx = null;
+        }
+    }
+
+    // Fetch and decode every effect once (called during loading)
+    async preload() {
+        if (!this.ctx) return;
+        await Promise.all(Object.entries(this.sounds).filter(([, file]) => file).map(async ([name, file]) => {
+            try {
+                const res = await fetch(this.basePath + file);
+                if (!res.ok) { this.missing.add(name); return; }
+                const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+                const data = buf.getChannelData(0);
+                const limit = Math.min(data.length, Math.floor(buf.sampleRate * 0.2));
+                let i = 0;
+                while (i < limit && Math.abs(data[i]) < 0.01) i++;
+                this.buffers[name] = buf;
+                this.offsets[name] = i < limit ? i / buf.sampleRate : 0;
+            } catch (e) { /* keep the <audio> fallback for this one */ }
+        }));
+    }
+
+    // Browsers start audio suspended until a user gesture
+    unlock() {
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => { });
     }
 
     setMusicVolume(v) {
@@ -4433,11 +4460,22 @@ class SoundManager {
 
     setSFXVolume(v) {
         this.sfxVolume = v;
+        if (this.gain) this.gain.gain.value = v;
     }
 
     play(name) {
-        if (!this.enabled || !this.sounds[name]) return;
+        if (!this.enabled || !this.sounds[name] || this.missing.has(name)) return;
 
+        const buf = this.buffers[name];
+        if (buf && this.ctx && this.ctx.state === 'running') {
+            const src = this.ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(this.gain);
+            src.start(0, this.offsets[name] || 0);
+            this.played++;
+            return;
+        }
+        this.unlock();
         const audio = new Audio(this.basePath + this.sounds[name]);
         audio.volume = this.sfxVolume;
         audio.play().catch(e => console.log("Audio playback blocked by browser"));

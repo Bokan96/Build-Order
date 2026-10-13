@@ -117,6 +117,76 @@ const ui = (b) => b.eval(`(() => { const q = s => document.querySelector(s); con
             check(s.pips[0][1] === 1 && !(await b.eval(`window.gameApp.state.p1.units.some(u => u.type === 'miner' && u.isAlive)`)), 'Miner gone, base lost 1');
             await b.shot('ui_ai_breach_after');
         }
+        if (which === 'snappy') {
+            // Input responsiveness: native cursor, act on press, Web Audio, short turn guard, no ripple
+            await boot(b, 'hotseat');
+            const center = (sel) => b.eval(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+            const press = async (sel) => { const p = await center(sel); if (!p) return null; await b.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y }); await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 }); return p; };
+            const release = (p) => b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x, y: p.y, button: 'left', clickCount: 1 });
+            const res = () => b.eval(`(() => { const p = window.gameApp.state.p1; return { gold: p.gold, energy: p.energy, atk: p.atk, units: p.units.length }; })()`);
+
+            const cur = await b.eval(`(() => ({ none: !document.getElementById('custom-cursor'), board: getComputedStyle(document.querySelector('.game-board')).cursor, card: getComputedStyle(document.querySelector('#p1-units .unit-card.interactive')).cursor }))()`);
+            check(cur.none && /cursor\.svg/.test(cur.board) && /cursor-pointer\.svg/.test(cur.card), `native cursor art (${cur.board.slice(0, 40)}… / ${cur.card.slice(0, 40)}…)`);
+
+            await py(b, ["from prismata.units import create_unit", "for t in ['miner', 'striker', 'volatile']:", "    u = create_unit(t); u.exhausted = False; game.player1.units.append(u)", "game.player1.energy = 3"]);
+            const snd = await b.eval(`(() => { const s = window.gameApp.sounds; return { ctx: !!s.ctx && s.ctx.state, bufs: ['CLICK', 'ABILITY', 'PREPARE_ATTACK'].every(k => !!s.buffers[k]), missing: Array.from(s.missing), played: s.played }; })()`);
+            check(snd.ctx === 'running' && snd.bufs, `sound effects decoded for Web Audio (${JSON.stringify(snd)})`);
+
+            let before = await res();
+            let p = await press('#p1-units-miner-col .unit-card.interactive:not(.exhausted)');
+            await sleep(60);
+            let mid = await res();
+            await release(p); await sleep(250);
+            let after = await res();
+            check(mid.gold === before.gold + 1 && after.gold === mid.gold, `Miner acts on press, release adds nothing (gold ${before.gold} → ${mid.gold} → ${after.gold})`);
+            const played = await b.eval('window.gameApp.sounds.played');
+            check(played > snd.played, 'ability sound went through Web Audio');
+
+            before = await res();
+            p = await press('#p1-units-striker-col .unit-card.interactive:not(.exhausted)');
+            await sleep(60); mid = await res(); await release(p); await sleep(250); after = await res();
+            check(mid.atk > before.atk && after.atk === mid.atk && after.energy === before.energy - 1, `Striker prepares on press, once (atk ${before.atk} → ${mid.atk} → ${after.atk}, energy ${before.energy} → ${after.energy})`);
+
+            before = await res();
+            p = await press('#p1-units-volatile-col .unit-card.interactive:not(.exhausted)');
+            await sleep(40);
+            const vol = await b.eval(`({ units: window.gameApp.state.p1.units.length, ghost: !!document.querySelector('.destroy-ghost'), card: !!document.querySelector('#p1-units-volatile-col .unit-card') })`);
+            await release(p);
+            check(vol.units === before.units - 1 && vol.ghost && !vol.card, `Volatile: state updated at once, copy animates (${JSON.stringify(vol)})`);
+            await sleep(900);
+            check(!(await b.eval(`!!document.querySelector('.destroy-ghost')`)), 'destroy copy removed');
+
+            const rp = await center('#central-attack-container');
+            await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 40, y: rp.y + 300, button: 'left', clickCount: 1 });
+            await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 40, y: rp.y + 300, button: 'left', clickCount: 1 });
+            check(!(await b.eval(`!!document.querySelector('.click-ripple, .click-particle')`)), 'no click ripple or particles');
+
+            // Turn change: input opens after the short guard, while the ribbon is still showing
+            // (timed inside the page: polling from outside is too coarse when many browsers run)
+            await b.eval(`(() => { const a = window.gameApp; window._lock = {}; const t0 = performance.now(); const id = setInterval(() => { const t = performance.now() - t0; const banner = document.getElementById('turn-banner'); if (a.isTurnTransitioning && window._lock.on == null) window._lock.on = t; if (window._lock.on != null && !a.isTurnTransitioning && window._lock.off == null) window._lock.off = t; if (window._lock.off != null && banner.classList.contains('hidden') && window._lock.hidden == null) { window._lock.hidden = t; clearInterval(id); } }, 5); setTimeout(() => clearInterval(id), 8000); return 1; })()`);
+            await endTurn(b);
+            await b.waitFor('window._lock.hidden != null', 8000, 50);
+            const lock = await b.eval('window._lock');
+            check(lock.off - lock.on < 700 && lock.hidden - lock.off > 300, `input unlocks ${Math.round(lock.off - lock.on)} ms into the turn change, ${Math.round(lock.hidden - lock.off)} ms before the ribbon ends`);
+
+            // P2 faces P1's attack, so their turn opens in Block: a blocker press must be accepted at once
+            const phase2 = await b.eval('window.gameApp.state.phase');
+            if (phase2 === 'Block') {
+                p = await press('#p2-units .unit-card.interactive:not(.exhausted)');
+                await sleep(80);
+                const blocking = await b.eval('window.gameApp.state.p2.units.some(u => u.blocking)');
+                if (p) await release(p);
+                check(p && blocking, 'next player can block right away (on press)');
+            } else {
+                const p2before = await b.eval('window.gameApp.state.p2.gold');
+                p = await press('#p2-units-miner-col .unit-card.interactive:not(.exhausted)');
+                await sleep(80);
+                const g = await b.eval('window.gameApp.state.p2.gold');
+                if (p) await release(p);
+                check(p && g === p2before + 1, `next player can act right away (${phase2})`);
+            }
+
+        }
         if (which === 'menu') {
             // The main menu must fit common desktop sizes without cropping its buttons
             await b.goto(BASE);

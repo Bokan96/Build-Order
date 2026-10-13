@@ -36,16 +36,28 @@
     padding: 0;
 }
 
+/* Native cursors with the game's arrow art: drawn by the OS, so they never lag behind the mouse.
+   !important beats inline `style.cursor` set on cards. */
 @media (hover: hover) and (pointer: fine) {
     * {
-        cursor: none !important;
+        cursor: url('assets/UI/cursor.svg') 5 5, auto !important;
     }
-}
 
-@media (hover: none),
-(pointer: coarse) {
-    #custom-cursor {
-        display: none !important;
+    button,
+    a,
+    .unit-card.interactive,
+    .unit-column.lethal-target-column,
+    .unit-column.lethal-target-column *,
+    .shop-list-item,
+    .ai-choice,
+    .close-btn,
+    .icon-btn,
+    .log-toggle-btn,
+    .copy-btn,
+    input[type="range"],
+    select,
+    *:active {
+        cursor: url('assets/UI/cursor-pointer.svg') 6 7, pointer !important;
     }
 }
 
@@ -64,30 +76,6 @@ body {
     overflow: hidden;
     height: 100vh;
     width: 100vw;
-}
-
-#custom-cursor {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 28px;
-    height: 28px;
-    background-image: url('assets/UI/cursor.svg');
-    background-size: contain;
-    background-repeat: no-repeat;
-    pointer-events: none;
-    z-index: 100000;
-    will-change: transform;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-#custom-cursor.active {
-    opacity: 1;
-}
-
-#custom-cursor.holding {
-    background-image: url('assets/UI/cursor-pointer.svg') !important;
 }
 
 body,
@@ -564,7 +552,7 @@ button,
     min-width: calc(var(--card-h) + 4px);
     position: relative;
     flex-shrink: 0;
-    transition: all 0.3s ease;
+    transition: all 0.15s ease;
     padding: calc(13px * var(--ui-scale)) calc(2px * var(--ui-scale));
     border-radius: var(--radius-md);
 }
@@ -1028,7 +1016,7 @@ button,
     border-radius: var(--radius-lg);
     border: none;
     /* cursor removed */
-    transition: all 0.5s ease;
+    transition: all 0.15s ease-out;
     text-transform: uppercase;
     letter-spacing: 1px;
     position: relative;
@@ -1712,7 +1700,7 @@ body.lockout .unit-card.interactive {
     font-weight: 800;
     border: 2px solid transparent;
     /* cursor removed */
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
     text-transform: uppercase;
     letter-spacing: 2px;
     position: relative;
